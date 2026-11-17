@@ -1,0 +1,105 @@
+/* Renim AI - In-Meeting Minimal Floating Widget */
+
+.renim-widget-container {
+  position: fixed;
+  bottom: 90px;
+  left: 24px;
+  z-index: 999999;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  user-select: none;
+}
+
+.renim-widget-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: rgba(18, 18, 20, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 8px 14px;
+  border-radius: 9999px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  color: #f4f4f5;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.renim-widget-inner:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+  background-color: rgba(24, 24, 27, 0.98);
+}
+
+.renim-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.renim-dot-idle {
+  background-color: #71717a;
+}
+
+.renim-dot-recording {
+  background-color: #ef4444;
+  box-shadow: 0 0 10px #ef4444;
+  animation: renim-pulse 1.8s infinite;
+}
+
+@keyframes renim-pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.renim-widget-title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #fafafa;
+}
+
+.renim-word-counter {
+  color: #a1a1aa;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  padding-left: 8px;
+}
+
+.renim-widget-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.renim-widget-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.renim-widget-btn.renim-btn-active {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #f87171;
+}
+
+.renim-widget-btn.renim-btn-active:hover {
+  background: #3f3f46;
+}

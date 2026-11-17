@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Renim AI - Meeting Copilot</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div id="app" class="app-container">
+    <!-- Top Global Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-logo" style="background: transparent; padding: 0; overflow: hidden; width: 22px; height: 22px;">
+          <img src="icon.svg" alt="Renim AI" style="width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 5px;" />
+        </div>
+        <div class="brand-info">
+          <h1 class="brand-name">Renim AI</h1>
+          <span class="brand-badge">SaaS Copilot</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div id="connection-status" class="connection-pill status-disconnected" title="Google Meet connection state">
+          <span class="status-dot"></span>
+          <span class="status-text">Standby</span>
+        </div>
+        <div id="user-profile-menu" class="user-menu hidden">
+          <button id="btn-logout" class="icon-btn" title="Sign Out">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Global Notice Banner -->
+    <div id="global-banner" class="banner hidden">
+      <span id="banner-text"></span>
+      <button id="btn-close-banner" class="banner-close">&times;</button>
+    </div>
+
+    <!-- Recovery Prompt for Crashed/Unsaved Sessions -->
+    <div id="recovery-card" class="recovery-banner hidden">
+      <div class="recovery-info">
+        <strong>Unsaved Meeting Detected</strong>
+        <p id="recovery-desc">You have 0 unsummarized transcript lines from a previous session.</p>
+      </div>
+      <div class="recovery-actions">
+        <button id="btn-recover" class="btn btn-sm btn-primary">Restore</button>
+        <button id="btn-discard-recovery" class="btn btn-sm btn-ghost">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="tab-live">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        <span>Live</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-summary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        <span>Notes & AI</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-history">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3v5h5"></path>
+          <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"></path>
+          <path d="M12 7v5l4 2"></path>
+        </svg>
+        <span>Archive</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-settings">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span>Config</span>
+      </button>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+
+      <!-- ================= TAB 1: LIVE MEETING ================= -->
+      <section id="tab-live" class="tab-pane active">
+        <!-- Live Action Bar -->
+        <div class="control-panel">
+          <div class="session-meta">
+            <span id="session-title" class="session-title-text" title="Active Meeting">Google Meet Session</span>
+            <div class="session-stats">
+              <span id="stat-words">0 words</span>
+              <span class="stat-divider">•</span>
+              <span id="stat-timer">00:00</span>
+            </div>
+          </div>
+          <div class="control-buttons">
+            <button id="btn-toggle-record" class="btn btn-primary">
+              <span class="btn-dot"></span>
+              <span id="btn-record-text">Start Capture</span>
+            </button>
+            <button id="btn-summarize-now" class="btn btn-secondary" title="End call & generate AI notes">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              </svg>
+              <span>Summarize</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Search & Filter Filterbar -->
+        <div class="search-bar-wrap">
+          <input type="text" id="transcript-search" class="input search-input" placeholder="Search live transcript...">
+          <button id="btn-copy-raw" class="icon-btn-text" title="Copy Raw Transcript">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>Copy</span>
+          </button>
+        </div>
+
+        <!-- Live Transcripts Feed -->
+        <div id="transcript-container" class="transcript-feed">
+          <div class="feed-empty-state">
+            <div class="empty-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
+            <h3>No Live Captions Yet</h3>
+            <p>Open Google Meet, turn on <strong>Captions (CC)</strong>, and click <strong>Start Capture</strong> above.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 2: AI SUMMARY & NOTES ================= -->
+      <section id="tab-summary" class="tab-pane">
+        <div class="summary-header">
+          <input type="text" id="summary-meeting-title" class="editable-title-input" value="Meeting Executive Brief" />
+          <div class="summary-actions">
+            <button id="btn-copy-markdown" class="btn btn-sm btn-secondary" title="Copy Markdown to Clipboard">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span>Copy Markdown</span>
+            </button>
+            <button id="btn-save-supabase" class="btn btn-sm btn-primary">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
+              <span>Save to Cloud</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="ai-loading-state" class="ai-loader hidden">
+          <div class="loader-spinner"></div>
+          <p class="loader-text">Analyzing transcript with AI Gateway...</p>
+        </div>
+
+        <div id="summary-content-area" class="summary-body">
+          <div class="summary-card">
+            <h4 class="card-title">Executive Summary</h4>
+            <div id="summary-tldr" class="card-content text-prose">
+              <em>Run a meeting or click Summarize to generate structured takeaways.</em>
+            </div>
+          </div>
+
+          <div class="summary-card">
+            <h4 class="card-title">Key Decisions</h4>
+            <ul id="summary-decisions" class="bullet-list">
+              <li>No decisions recorded yet.</li>
+            </ul>
+          </div>
+
+          <div class="summary-card">
+            <h4 class="card-title">Action Items & Deliverables</h4>
+            <div id="summary-actions-list" class="checklist-container">
+              <p class="empty-hint">No action items detected.</p>
+            </div>
+          </div>
+
+          <div class="summary-card">
+            <h4 class="card-title">Key Discussion Points</h4>
+            <ul id="summary-keypoints" class="bullet-list">
+              <li>No key discussion points recorded yet.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 3: HISTORY & ARCHIVE ================= -->
+      <section id="tab-history" class="tab-pane">
+        <div class="history-toolbar">
+          <input type="text" id="history-search" class="input search-input" placeholder="Search saved meetings...">
+          <button id="btn-refresh-history" class="icon-btn" title="Refresh from Supabase">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div id="history-list" class="history-cards-container">
+          <div class="feed-empty-state">
+            <p>Loading your cloud meeting history...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 4: CONFIGURATION & SETTINGS ================= -->
+      <section id="tab-settings" class="tab-pane">
+        <div class="settings-form">
+          <h3 class="section-title">Cloud Storage & Auth (Supabase)</h3>
+          <div class="form-group">
+            <label for="input-sb-url">Supabase Project URL</label>
+            <input type="url" id="input-sb-url" class="input" placeholder="https://xyzcompany.supabase.co" />
+          </div>
+          <div class="form-group">
+            <label for="input-sb-anon">Supabase Anon Public Key</label>
+            <input type="password" id="input-sb-anon" class="input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..." />
+          </div>
+
+          <hr class="form-divider" />
+
+          <h3 class="section-title">AI Gateway & Model Engine</h3>
+          <div class="form-group">
+            <label for="input-ai-url">AI Gateway Base URL</label>
+            <input type="url" id="input-ai-url" class="input" placeholder="https://api.openai.com/v1" />
+            <small class="form-hint">Supports OpenAI, Groq, LiteLLM, or Custom Gateway endpoints</small>
+          </div>
+          <div class="form-group">
+            <label for="input-ai-key">AI Gateway API Key</label>
+            <input type="password" id="input-ai-key" class="input" placeholder="sk-..." />
+          </div>
+          <div class="form-group">
+            <label for="input-ai-model">AI Model Identifier</label>
+            <input type="text" id="input-ai-model" class="input" placeholder="gpt-4o-mini" value="gpt-4o-mini" />
+          </div>
+
+          <div class="settings-actions">
+            <button id="btn-save-settings" class="btn btn-primary btn-block">Save Configuration</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ================= AUTH MODAL OVERLAY ================= -->
+    <div id="auth-modal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 class="modal-title">Welcome to Renim AI</h2>
+          <p class="modal-subtitle">Sign in to sync your meetings & AI summaries</p>
+        </div>
+
+        <div class="auth-tabs">
+          <button id="auth-tab-login" class="auth-tab active">Log In</button>
+          <button id="auth-tab-signup" class="auth-tab">Create Account</button>
+        </div>
+
+        <form id="auth-form" class="auth-form">
+          <div class="form-group">
+            <label for="auth-email">Email Address</label>
+            <input type="email" id="auth-email" class="input" required placeholder="name@company.com" />
+          </div>
+          <div class="form-group">
+            <label for="auth-password">Password</label>
+            <input type="password" id="auth-password" class="input" required minlength="6" placeholder="••••••••" />
+          </div>
+
+          <div id="auth-error-msg" class="form-error hidden"></div>
+
+          <button type="submit" id="btn-auth-submit" class="btn btn-primary btn-block">
+            Sign In
+          </button>
+        </form>
+
+        <div class="auth-footer">
+          <button id="btn-skip-auth" class="btn-link">Continue locally without sign in</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Scripts -->
+  <script src="../config.js"></script>
+  <script src="../lib/supabase-client.js"></script>
+  <script src="../lib/ai-gateway.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

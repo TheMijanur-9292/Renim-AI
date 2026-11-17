@@ -1,0 +1,26 @@
+{
+  "name": "renim-ai",
+  "version": "1.0.0",
+  "description": "Renim AI - Enterprise Google Meet Transcriber & Copilot",
+  "main": "background/service-worker.js",
+  "scripts": {
+    "start": "python backend/main.py",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "sync": "node sync-env.js",
+    "landing": "python backend/main.py"
+  },
+  "keywords": [
+    "chrome-extension",
+    "google-meet",
+    "ai-transcription",
+    "meeting-summarizer",
+    "supabase",
+    "ai-copilot"
+  ],
+  "author": "Renim AI",
+  "license": "MIT",
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}

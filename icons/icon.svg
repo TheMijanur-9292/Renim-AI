@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="50%" stop-color="#082f49"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+    <linearGradient id="cyanGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="160" stroke="#06b6d4" stroke-width="8" stroke-dasharray="16 8" fill="none" opacity="0.6"/>
+  <path d="M256 120 L350 200 L310 340 L202 340 L162 200 Z" fill="none" stroke="url(#cyanGlow)" stroke-width="16" stroke-linejoin="round"/>
+  <path d="M220 180 L292 180 C320 180 336 195 336 220 C336 242 322 256 300 260 L340 330 L298 330 L264 268 L250 268 L250 330 L220 330 Z M250 210 L250 242 L288 242 C302 242 310 236 310 226 C310 216 302 210 288 210 Z" fill="#ffffff"/>
+  <circle cx="256" cy="120" r="12" fill="#22d3ee"/>
+  <circle cx="350" cy="200" r="12" fill="#22d3ee"/>
+  <circle cx="310" cy="340" r="12" fill="#22d3ee"/>
+  <circle cx="202" cy="340" r="12" fill="#22d3ee"/>
+  <circle cx="162" cy="200" r="12" fill="#22d3ee"/>
+</svg>

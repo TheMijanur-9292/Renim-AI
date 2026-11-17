@@ -1,0 +1,19 @@
+# Environment Variables
+.env
+**/.env
+.env.local
+.env.production
+!.env.example
+
+# Dependencies & Build Caches
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+frontend/.astro/
+*.log
+
+# OS Files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,468 @@
+---
+/**
+ * Renim AI — Dedicated Sign Up Page (/signup)
+ */
+---
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign Up — Create Your Renim AI Workspace Account</title>
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .auth-page-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      background: #f8fafc;
+      position: relative;
+      overflow: hidden;
+    }
+
+    @media (max-width: 960px) {
+      .auth-page-shell {
+        grid-template-columns: 1fr;
+      }
+      .auth-showcase-side {
+        display: none !important;
+      }
+    }
+
+    /* Left Showcase Column */
+    .auth-showcase-side {
+      background: #0f172a;
+      color: #ffffff;
+      padding: 56px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+      border-right: 1px solid #1e293b;
+    }
+
+    .auth-showcase-side::before {
+      display: none;
+    }
+
+    .auth-brand-top {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: #ffffff;
+      z-index: 2;
+    }
+
+    .auth-brand-logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: #4f46e5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+    }
+
+    .auth-hero-copy {
+      max-width: 500px;
+      z-index: 2;
+    }
+
+    .auth-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(8, 145, 178, 0.2);
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      color: #a5f3fc;
+      font-size: 12.5px;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+
+    .auth-hero-copy h1 {
+      font-size: 38px;
+      font-weight: 800;
+      line-height: 1.18;
+      margin-bottom: 16px;
+      letter-spacing: -0.02em;
+    }
+
+    .auth-hero-copy p {
+      font-size: 15.5px;
+      color: #a1a1aa;
+      line-height: 1.65;
+      margin-bottom: 28px;
+    }
+
+    .auth-feature-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .auth-feature-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: #e4e4e7;
+      font-weight: 500;
+    }
+
+    .auth-feature-item .material-symbols-rounded {
+      color: #06b6d4;
+      font-size: 20px;
+    }
+
+    /* Right Form Column */
+    .auth-form-side {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 40px 24px;
+      position: relative;
+    }
+
+    .auth-card {
+      width: 100%;
+      max-width: 440px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 20px;
+      padding: 40px 36px;
+      box-shadow: 0 20px 50px rgba(15, 23, 42, 0.06);
+    }
+
+    .auth-card-header {
+      margin-bottom: 26px;
+    }
+
+    .auth-card-header h2 {
+      font-size: 26px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-bottom: 6px;
+      letter-spacing: -0.02em;
+    }
+
+    .auth-card-header p {
+      font-size: 14px;
+      color: #64748b;
+    }
+
+    .auth-field {
+      margin-bottom: 16px;
+    }
+
+    .auth-field label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #334155;
+      margin-bottom: 7px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .auth-input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .auth-input-wrap .material-symbols-rounded {
+      position: absolute;
+      left: 14px;
+      color: #94a3b8;
+      font-size: 19px;
+      pointer-events: none;
+    }
+
+    .auth-input {
+      width: 100%;
+      padding: 12px 14px 12px 42px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      font-size: 14px;
+      color: #0f172a;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.15s ease;
+    }
+
+    .auth-input:focus {
+      background: #ffffff;
+      border-color: #06b6d4;
+      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
+    }
+
+    .auth-submit-btn {
+      width: 100%;
+      padding: 13px 20px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%);
+      color: #ffffff;
+      font-size: 14.5px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 10px 25px rgba(8, 145, 178, 0.35);
+      transition: all 0.2s ease;
+      margin-top: 8px;
+    }
+
+    .auth-submit-btn:hover {
+      background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+      transform: translateY(-1px);
+    }
+
+    .auth-submit-btn:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .auth-alert {
+      display: none;
+      padding: 11px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .auth-alert.error {
+      display: block;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+    }
+
+    .auth-alert.success {
+      display: block;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #16a34a;
+    }
+
+    .auth-switch-footer {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #e2e8f0;
+      text-align: center;
+      font-size: 13.5px;
+      color: #475569;
+    }
+
+    .auth-switch-footer a {
+      color: #0891b2;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .auth-switch-footer a:hover {
+      text-decoration: underline;
+    }
+
+    .back-home-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #64748b;
+      text-decoration: none;
+    }
+
+    .back-home-link:hover {
+      color: #0891b2;
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-page-shell">
+    <!-- Left Showcase Panel -->
+    <aside class="auth-showcase-side">
+      <a href="/" class="auth-brand-top">
+        <div class="auth-brand-logo" style="overflow: hidden; padding: 0;">
+          <img src="/icon.svg" alt="Renim AI" style="width: 100%; height: 100%; object-fit: contain; display: block;" />
+        </div>
+        <span style="font-size: 20px; font-weight: 800;">Renim AI</span>
+        <span class="badge-pro">PRO</span>
+      </a>
+
+      <div class="auth-hero-copy">
+        <div class="auth-pill">
+          <span class="material-symbols-rounded" style="font-size: 16px;">rocket_launch</span>
+          <span>Start Your AI Productivity Workspace</span>
+        </div>
+        <h1>Create Your Free Renim AI Account Today.</h1>
+        <p>
+          Join high-velocity operators using Renim AI to automate meeting notes, organize second-brain knowledge, and chat with a context-aware AI Copilot.
+        </p>
+
+        <div class="auth-feature-list">
+          <div class="auth-feature-item">
+            <span class="material-symbols-rounded">check_circle</span>
+            <span>Unlimited Smart Notes with Rich Formatting Toolbar</span>
+          </div>
+          <div class="auth-feature-item">
+            <span class="material-symbols-rounded">check_circle</span>
+            <span>Dedicated Per-User Chat History & Sessions in Neon DB</span>
+          </div>
+          <div class="auth-feature-item">
+            <span class="material-symbols-rounded">check_circle</span>
+            <span>Instant Light Mode & Dark Mode Workspace Themes</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size: 12.5px; color: #71717a; z-index: 2;">
+        © 2026 Renim AI Workspace. Powered by FastAPI, Neon & Qwen 2.5.
+      </div>
+    </aside>
+
+    <!-- Right Sign Up Form Panel -->
+    <main class="auth-form-side">
+      <div style="width: 100%; max-width: 440px;">
+        <a href="/" class="back-home-link">
+          <span class="material-symbols-rounded" style="font-size: 18px;">arrow_back</span>
+          <span>Back to Homepage</span>
+        </a>
+
+        <div class="auth-card">
+          <div class="auth-card-header">
+            <h2>Create Your Account</h2>
+            <p>Set up your Renim AI profile in seconds and launch your workspace.</p>
+          </div>
+
+          <div id="signup-alert" class="auth-alert"></div>
+
+          <form id="signup-form">
+            <div class="auth-field">
+              <label for="signup-name">Full Name</label>
+              <div class="auth-input-wrap">
+                <span class="material-symbols-rounded">person</span>
+                <input
+                  type="text"
+                  id="signup-name"
+                  class="auth-input"
+                  placeholder="Alex Johnson"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="auth-field">
+              <label for="signup-email">Work or Personal Email</label>
+              <div class="auth-input-wrap">
+                <span class="material-symbols-rounded">mail</span>
+                <input
+                  type="email"
+                  id="signup-email"
+                  class="auth-input"
+                  placeholder="you@company.com"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="auth-field">
+              <label for="signup-password">Create Password</label>
+              <div class="auth-input-wrap">
+                <span class="material-symbols-rounded">lock</span>
+                <input
+                  type="password"
+                  id="signup-password"
+                  class="auth-input"
+                  placeholder="Minimum 6 characters"
+                  minlength="6"
+                  required
+                />
+              </div>
+            </div>
+
+            <button type="submit" id="signup-btn" class="auth-submit-btn">
+              <span class="material-symbols-rounded" style="font-size: 19px;">person_add</span>
+              <span id="signup-btn-text">Create Account & Launch</span>
+            </button>
+          </form>
+
+          <div class="auth-switch-footer">
+            Already have an account?
+            <a href="/signin">Sign In Here →</a>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script is:inline>
+    const form = document.getElementById('signup-form');
+    const alertBox = document.getElementById('signup-alert');
+    const submitBtn = document.getElementById('signup-btn');
+    const btnText = document.getElementById('signup-btn-text');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      alertBox.className = 'auth-alert';
+      alertBox.textContent = '';
+
+      const full_name = document.getElementById('signup-name').value.trim();
+      const email = document.getElementById('signup-email').value.trim();
+      const password = document.getElementById('signup-password').value.trim();
+
+      submitBtn.disabled = true;
+      btnText.textContent = 'Creating your account...';
+
+      try {
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, full_name })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to register account');
+        }
+
+        localStorage.setItem('sb_session', JSON.stringify({
+          access_token: data.access_token || 'neon-session-token',
+          user: data.user
+        }));
+
+        alertBox.className = 'auth-alert success';
+        alertBox.textContent = 'Account created! Launching your workspace...';
+
+        setTimeout(() => {
+          window.location.href = '/app';
+        }, 500);
+      } catch (err) {
+        alertBox.className = 'auth-alert error';
+        alertBox.textContent = err.message || 'Sign up failed';
+        submitBtn.disabled = false;
+        btnText.textContent = 'Create Account & Launch';
+      }
+    });
+  </script>
+</body>
+</html>
