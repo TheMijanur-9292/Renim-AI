@@ -10,8 +10,8 @@ from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from db import get_db_pool, log_audit, get_effective_plan
-from auth_utils import resolve_user_email, is_safe_public_url
+from db import get_db_pool, log_audit, get_effective_plan, resolve_org_access
+from auth_utils import resolve_user_email, is_safe_public_url, server_error, resolve_authenticated_email, has_min_role
 
 router = APIRouter(tags=["Integrations & API Keys"])
 
@@ -38,6 +38,14 @@ class ApiKeyCreateRequest(BaseModel):
     user_email: Optional[str] = None
 
 
+def _org_admin_ok(email: str, org_id: Optional[str]) -> bool:
+    oid = (org_id or "").strip()
+    if not oid or oid == "personal":
+        return email != "guest@renimai.com"
+    allowed, role = resolve_org_access(email, oid)
+    return bool(allowed and has_min_role(role, "admin"))
+
+
 @router.get("/api/integrations")
 async def list_integrations(
     org_id: str = "",
@@ -62,7 +70,7 @@ async def list_integrations(
                 )
                 return {"integrations": cur.fetchall()}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.post("/api/integrations/save")
@@ -78,6 +86,11 @@ async def save_integration(
     provider = req.provider.strip().lower()
     if provider not in {"slack", "teams", "jira", "github", "webhook"}:
         return JSONResponse(status_code=400, content={"error": "Unsupported integration provider"})
+    if not _org_admin_ok(email, req.org_id):
+        return JSONResponse(status_code=403, content={"error": "Admin or Owner role required for this organization."})
+    hook = (req.webhook_url or "").strip()
+    if hook and (not hook.startswith("https://") or not is_safe_public_url(hook)):
+        return JSONResponse(status_code=400, content={"error": "Webhook URL must be a public https:// address."})
     plan = get_effective_plan(email, req.org_id)
     if provider in {"slack", "teams", "webhook"} and plan["rank"] < 2:
         return JSONResponse(status_code=402, content={"error": f"{provider.title()} integration requires Pro plan (₹199/mo) or higher."})
@@ -122,7 +135,7 @@ async def save_integration(
         )
         return {"integration": row}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.post("/api/integrations/test-webhook")
@@ -146,7 +159,7 @@ async def test_webhook(
         log_audit(email, "webhook.tested", "integration", req.provider, {"status_code": resp.status_code})
         return {"delivered": resp.status_code < 400, "status_code": resp.status_code}
     except Exception as e:
-        return JSONResponse(status_code=502, content={"delivered": False, "error": str(e)})
+        return JSONResponse(status_code=502, content={"delivered": False, "error": "Webhook delivery failed (connection error or timeout)."})
 
 
 @router.get("/api/api-keys")
@@ -172,7 +185,7 @@ async def list_api_keys(
                 )
                 return {"api_keys": cur.fetchall()}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.post("/api/api-keys", status_code=201)
@@ -181,7 +194,11 @@ async def create_api_key(
     request: Request,
     authorization: Optional[str] = Header(default=None),
 ):
-    email = resolve_user_email(authorization, req.user_email)
+    email = resolve_authenticated_email(authorization)
+    if not email:
+        return JSONResponse(status_code=401, content={"error": "Sign in to create API keys."})
+    if not _org_admin_ok(email, req.org_id):
+        return JSONResponse(status_code=403, content={"error": "Admin or Owner role required for this organization."})
     plan = get_effective_plan(email, req.org_id)
     if plan["rank"] < 3:
         return JSONResponse(status_code=402, content={"error": "Developer API Keys require Team plan (₹599/mo) or higher."})
@@ -214,7 +231,7 @@ async def create_api_key(
         )
         return {"api_key": {**row, "secret_key": raw_key}}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.delete("/api/api-keys/{key_id}")
@@ -245,4 +262,4 @@ async def revoke_api_key(
         )
         return {"status": "revoked", "id": key_id}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))

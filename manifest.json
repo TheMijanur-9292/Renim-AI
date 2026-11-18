@@ -21,21 +21,27 @@
   "permissions": [
     "sidePanel",
     "storage",
-    "activeTab",
-    "scripting",
-    "tabs"
+    "activeTab"
   ],
   "host_permissions": [
     "https://meet.google.com/*",
-    "https://*.supabase.co/*",
-    "https://*/*"
+    "https://*.supabase.co/*"
   ],
   "content_scripts": [
     {
-      "matches": ["https://meet.google.com/*"],
-      "js": ["content/meet-observer.js"],
-      "css": ["content/meet-inject.css"],
+      "matches": [
+        "https://meet.google.com/*"
+      ],
+      "js": [
+        "content/meet-observer.js"
+      ],
+      "css": [
+        "content/meet-inject.css"
+      ],
       "run_at": "document_idle"
     }
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
   ]
 }

@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from db import get_db_pool, log_audit, get_effective_plan
-from auth_utils import resolve_user_email, resolve_authenticated_email
+from auth_utils import resolve_user_email, resolve_authenticated_email, server_error
 
 router = APIRouter(prefix="/api/audit", tags=["Audit & Compliance"])
 
@@ -61,7 +61,7 @@ async def get_audit_logs(
                     )
                 return {"logs": cur.fetchall()}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.get("/export")
@@ -102,7 +102,7 @@ async def export_audit_logs_csv(
             headers={"Content-Disposition": "attachment; filename=renim-ai-audit-logs.csv"},
         )
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.get("/settings")
@@ -130,7 +130,7 @@ async def get_security_settings(
                     return {"settings": {"org_id": scope_id, "sso_domain": "", "mfa_enforced": False, "retention_days": 90}}
                 return {"settings": dict(row)}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.put("/settings")
@@ -172,4 +172,4 @@ async def save_security_settings(
         log_audit(email, "security.settings_updated", "security", scope_id, {"mfa_enforced": req.mfa_enforced, "retention_days": retention})
         return {"settings": dict(row)}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))

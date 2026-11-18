@@ -589,6 +589,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       const aiKey = el.inputAiKey.value.trim();
       const aiModel = el.inputAiModel.value.trim();
 
+      // Ask for access only to the specific hosts the user configured (no blanket https://*/* grant).
+      const origins = [sbUrl, aiUrl]
+        .filter(Boolean)
+        .map(u => { try { const p = new URL(u); return p.protocol === 'https:' ? `${p.origin}/*` : null; } catch { return null; } })
+        .filter(Boolean);
+      if ((sbUrl && !sbUrl.startsWith('https://')) || (aiUrl && !aiUrl.startsWith('https://'))) {
+        throw new Error('Supabase and AI gateway URLs must use https://');
+      }
+      if (origins.length && chrome.permissions) {
+        const granted = await chrome.permissions.request({ origins });
+        if (!granted) throw new Error('Host permission was not granted for the configured URLs.');
+      }
+
       await supabase.setConfig(sbUrl, sbAnon);
       await aiGateway.setConfig(aiUrl, aiKey, aiModel);
 

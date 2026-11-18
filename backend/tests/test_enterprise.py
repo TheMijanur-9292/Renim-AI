@@ -6,6 +6,9 @@ import sys
 import time
 from pathlib import Path
 
+import os
+os.environ.setdefault("JWT_SECRET", "test-secret-" + "x" * 40)
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -26,6 +29,9 @@ from auth_utils import (
     has_min_role,
     create_password_reset_token,
     verify_password_reset_token,
+    resolve_authenticated_email,
+    resolve_llm_target,
+    validate_password_strength,
 )
 
 
@@ -96,6 +102,31 @@ def test_password_reset_token_purpose():
     assert verify_password_reset_token(access_tok) is None
 
 
+def test_reset_token_cannot_be_used_as_session():
+    reset_tok = create_password_reset_token("victim@renim.ai")
+    assert resolve_authenticated_email(f"Bearer {reset_tok}") is None
+    session_tok = create_access_token("victim@renim.ai", "Victim", "owner", token_version=1)
+    assert resolve_authenticated_email(f"Bearer {session_tok}") == "victim@renim.ai"
+
+
+def test_empty_password_hash_never_verifies():
+    assert verify_password("anything", "") is False
+    assert verify_password("", "plaintext-legacy") is False
+
+
+def test_server_llm_key_never_sent_to_client_url():
+    key, model, base = resolve_llm_target(None, "gpt-4-expensive", "https://evil.example.com", "SERVER_KEY", "qwen", "https://aim.example")
+    assert (key, model, base) == ("SERVER_KEY", "qwen", "https://aim.example")
+    key, _, base = resolve_llm_target("user-key", None, "http://127.0.0.1:8080", "SERVER_KEY", "qwen", "https://aim.example")
+    assert key == "user-key" and base == "https://aim.example"
+
+
+def test_password_policy():
+    assert validate_password_strength("1234567890") is not None
+    assert validate_password_strength("short1") is not None
+    assert validate_password_strength("correct-horse-42") is None
+
+
 if __name__ == "__main__":
     tests = [
         test_password_hashing_and_verification,
@@ -105,6 +136,10 @@ if __name__ == "__main__":
         test_ssrf_guard,
         test_rbac_hierarchy,
         test_password_reset_token_purpose,
+        test_reset_token_cannot_be_used_as_session,
+        test_empty_password_hash_never_verifies,
+        test_server_llm_key_never_sent_to_client_url,
+        test_password_policy,
     ]
     for fn in tests:
         fn()

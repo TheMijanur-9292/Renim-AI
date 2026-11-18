@@ -57,6 +57,7 @@ import { ShareModal } from './modals/ShareModal';
 import { CommandPaletteModal } from './modals/CommandPaletteModal';
 import { PomodoroModal } from './modals/PomodoroModal';
 import { ScratchpadDrawer } from './modals/ScratchpadDrawer';
+import { sanitizeHtml } from '../utils/sanitize';
 
 const db = new DatabaseClient();
 const ai = new AIEngine();
@@ -369,6 +370,11 @@ export default function WorkspaceApp() {
   useEffect(() => {
     db.init();
     ai.init();
+    if (!db.isAuthenticated()) {
+      // Guest mode is disabled server-side by default; send visitors to sign in instead of a broken empty workspace.
+      window.location.href = '/signin';
+      return;
+    }
     syncAuthUI();
     const savedTheme = (localStorage.getItem('renim_theme') as 'dark' | 'light') || 'light';
     setThemeMode(savedTheme);
@@ -716,7 +722,7 @@ export default function WorkspaceApp() {
     activeNoteIdRef.current = note.id;
     setActiveNoteId(note.id);
     setNoteTitle(note.title || '');
-    const formatted = toEditorHtml(note.content || '');
+    const formatted = sanitizeHtml(toEditorHtml(note.content || ''));
     setNoteContent(formatted);
     if (noteEditorRef.current) {
       noteEditorRef.current.innerHTML = formatted;
@@ -823,7 +829,7 @@ export default function WorkspaceApp() {
           }
         }
       });
-      document.execCommand('insertHTML', false, doc.body.innerHTML);
+      document.execCommand('insertHTML', false, sanitizeHtml(doc.body.innerHTML));
     } else if (textData) {
       e.preventDefault();
       const escaped = textData
@@ -871,7 +877,8 @@ export default function WorkspaceApp() {
 
   const handleInsertCodeBlock = () => {
     const sel = window.getSelection()?.toString() || '// Write code here...';
-    execEditorCmd('insertHTML', `<pre><code>${sel}</code></pre><p><br/></p>`);
+    const safeSel = sel.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    execEditorCmd('insertHTML', `<pre><code>${safeSel}</code></pre><p><br/></p>`);
   };
 
   const handleDeleteNote = async () => {
@@ -902,7 +909,7 @@ export default function WorkspaceApp() {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/\n/g, '<br/>');
-      const updated = `${noteContent}<hr/><h4>✨ AI Assistant Output</h4><p>${formattedAi}</p>`;
+      const updated = sanitizeHtml(`${noteContent}<hr/><h4>✨ AI Assistant Output</h4><p>${formattedAi}</p>`);
       setNoteContent(updated);
       if (noteEditorRef.current) {
         noteEditorRef.current.innerHTML = updated;
@@ -2026,6 +2033,7 @@ export default function WorkspaceApp() {
                 setActiveOrgId(org.id);
                 setActiveOrgName(org.name);
                 db.activeOrgId = org.id || 'personal';
+                try { sessionStorage.setItem('renim_active_org_id', org.id || 'personal'); } catch {}
                 refreshWorkspaceData();
               }}
               showToast={showToast}

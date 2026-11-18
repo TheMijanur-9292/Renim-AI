@@ -17,10 +17,16 @@ from urllib.parse import urlparse, quote
 from typing import Optional, Dict, Any, Tuple
 from fastapi import HTTPException
 
-JWT_SECRET = os.getenv("JWT_SECRET") or secrets.token_hex(32)
+JWT_SECRET = (os.getenv("JWT_SECRET") or "").strip()
+if len(JWT_SECRET) < 32:
+    if os.getenv("ALLOW_EPHEMERAL_JWT_SECRET", "").strip().lower() in ("1", "true", "yes"):
+        JWT_SECRET = secrets.token_hex(32)
+        print("WARNING: JWT_SECRET not set; using an ephemeral secret (dev only). All sessions reset on restart.")
+    else:
+        raise RuntimeError("JWT_SECRET must be set to a random string of at least 32 characters.")
 JWT_EXPIRY_SECONDS = 60 * 60 * 24 * 7  # 7 days
 PBKDF2_ITERATIONS = 120_000
-ALLOW_GUEST_MODE = os.getenv("ALLOW_GUEST_MODE", "true").strip().lower() in ("1", "true", "yes")
+ALLOW_GUEST_MODE = os.getenv("ALLOW_GUEST_MODE", "false").strip().lower() in ("1", "true", "yes")
 
 
 def hash_password(password: str) -> str:
@@ -45,6 +51,9 @@ def verify_password(plain_password: str, stored_hash: Optional[str]) -> bool:
             return hmac.compare_digest(dk, expected)
         except Exception:
             return False
+    # Legacy plaintext rows: compared once, then re-hashed by the caller on successful sign-in.
+    if not plain_password:
+        return False
     return hmac.compare_digest(plain_password.encode("utf-8"), stored_hash.encode("utf-8"))
 
 
@@ -61,14 +70,17 @@ def is_safe_public_url(url: str) -> bool:
             return False
         try:
             ip = ipaddress.ip_address(host)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
                 return False
         except ValueError:
             try:
-                resolved_ip = socket.gethostbyname(host)
-                ip = ipaddress.ip_address(resolved_ip)
-                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+                infos = socket.getaddrinfo(host, None)
+                if not infos:
                     return False
+                for info in infos:
+                    ip = ipaddress.ip_address(info[4][0].split("%")[0])
+                    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+                        return False
             except Exception:
                 return False
         return True
@@ -126,18 +138,33 @@ def verify_access_token(token: str) -> Optional[Dict[str, Any]]:
 def resolve_authenticated_email(authorization: Optional[str]) -> Optional[str]:
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization[7:].strip()
+        if token.startswith(API_KEY_PREFIX):
+            try:
+                from db import resolve_api_key_email
+                return resolve_api_key_email(token)
+            except Exception:
+                return None
         payload = verify_access_token(token)
-        if payload and payload.get("sub"):
-            email = str(payload["sub"]).strip().lower()
-            if "tv" in payload:
-                try:
-                    from db import is_token_version_valid
-                    if not is_token_version_valid(email, int(payload["tv"])):
-                        return None
-                except Exception:
-                    pass
-            return email
+        # Only session tokens are accepted here: reset tokens (or any token with a purpose) are rejected,
+        # and every session token must carry a token version so "log out everywhere" can revoke it.
+        if not payload or not payload.get("sub") or payload.get("purpose") or "tv" not in payload:
+            return None
+        email = str(payload["sub"]).strip().lower()
+        try:
+            from db import is_token_version_valid
+            if not is_token_version_valid(email, int(payload["tv"])):
+                return None
+        except Exception:
+            return None
+        return email
     return None
+
+
+API_KEY_PREFIX = "sk_renim_"
+
+
+def hash_api_key(raw_key: str) -> str:
+    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
 
 def resolve_user_email(authorization: Optional[str], fallback_email: Optional[str] = None) -> str:
@@ -151,12 +178,13 @@ def resolve_user_email(authorization: Optional[str], fallback_email: Optional[st
     return "guest@renimai.com"
 
 
-def create_password_reset_token(email: str) -> str:
+def create_password_reset_token(email: str, token_version: int = 1) -> str:
     header = {"alg": "HS256", "typ": "JWT"}
     now = int(time.time())
     payload = {
         "sub": email.strip().lower(),
         "purpose": "password_reset",
+        "rtv": int(token_version or 1),
         "iat": now,
         "exp": now + 900,  # 15 minutes
     }
@@ -170,7 +198,37 @@ def create_password_reset_token(email: str) -> str:
 def verify_password_reset_token(token: str) -> Optional[str]:
     payload = verify_access_token(token)
     if payload and payload.get("purpose") == "password_reset" and payload.get("sub"):
-        return str(payload["sub"]).strip().lower()
+        email = str(payload["sub"]).strip().lower()
+        # Reset tokens are single-use: a successful reset bumps token_version, invalidating this token.
+        try:
+            from db import is_token_version_valid
+            if not is_token_version_valid(email, int(payload.get("rtv", -1))):
+                return None
+        except Exception:
+            return None
+        return email
+    return None
+
+
+def client_ip(request) -> str:
+    """Client IP, honouring X-Forwarded-For only when TRUST_PROXY is enabled (e.g. behind Vercel/Nginx)."""
+    if os.getenv("TRUST_PROXY", "").strip().lower() in ("1", "true", "yes"):
+        fwd = request.headers.get("x-forwarded-for", "")
+        if fwd:
+            return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "127.0.0.1"
+
+
+MIN_PASSWORD_LENGTH = 8
+
+
+def validate_password_strength(password: str) -> Optional[str]:
+    if not password or len(password) < MIN_PASSWORD_LENGTH:
+        return f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
+    if password.isdigit() or password.isalpha():
+        return "Password must mix letters with numbers or symbols."
+    if password.lower() in {"password1", "12345678a", "qwerty123", "letmein123"}:
+        return "That password is too common."
     return None
 
 
@@ -245,3 +303,28 @@ def check_rate_limit(key: str, max_requests: int = 60, window_seconds: int = 60)
 def reset_rate_limits() -> None:
     with _RATE_LOCK:
         _RATE_BUCKETS.clear()
+
+
+def server_error(exc: Exception) -> Dict[str, str]:
+    """Logs the real exception server-side and returns a generic, non-leaky error body."""
+    ref = secrets.token_hex(4)
+    print(f"[error ref={ref}] {type(exc).__name__}: {exc}")
+    return {"error": f"Something went wrong on our side. (ref {ref})"}
+
+
+def resolve_llm_target(
+    api_key: Optional[str], model: Optional[str], base_url: Optional[str],
+    default_key: str, default_model: str, default_base: str,
+) -> Tuple[str, str, str]:
+    """Picks the LLM endpoint for a request.
+
+    Without the caller's own API key, the server key, model and endpoint are always used, so the server key
+    can never be sent to a caller-chosen URL. With the caller's own key, a custom public endpoint is allowed.
+    """
+    own_key = (api_key or "").strip()
+    if not own_key:
+        return default_key, default_model, default_base.rstrip("/")
+    base = (base_url or "").strip().rstrip("/")
+    if not base or not base.startswith("https://") or not is_safe_public_url(base):
+        base = default_base.rstrip("/")
+    return own_key, (model or default_model), base

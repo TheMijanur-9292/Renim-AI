@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from db import get_db_pool, log_audit
-from auth_utils import resolve_user_email, resolve_authenticated_email, verify_password, hash_password
+from auth_utils import resolve_user_email, resolve_authenticated_email, verify_password, hash_password, server_error
 
 router = APIRouter(prefix="/api/profile", tags=["User Profile"])
 
@@ -191,7 +191,7 @@ def get_user_profile(
                     "memberships": memberships,
                 }
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @router.put("")
@@ -267,7 +267,7 @@ def update_user_profile(
                     }
                 }
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @router.post("/change-password")
@@ -312,7 +312,7 @@ def change_user_password(
                 log_audit(email, "profile.password_changed", "user", str(row["id"]))
                 return {"success": True, "message": "Password updated successfully."}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @router.get("/export-data")
@@ -346,7 +346,7 @@ def gdpr_export_user_data(authorization: Optional[str] = Header(default=None)):
             headers={"Content-Disposition": "attachment; filename=renim-ai-gdpr-export.json"},
         )
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @router.delete("/account")
@@ -373,4 +373,4 @@ def gdpr_delete_account(authorization: Optional[str] = Header(default=None)):
         log_audit(email, "gdpr.account_deleted", "user", email)
         return {"deleted": bool(deleted), "message": "Account and personal workspace data permanently deleted."}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))

@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from db import get_db_pool, track_ai_usage, log_audit, check_ai_credits, is_user_active
-from auth_utils import resolve_user_email, is_safe_public_url
+from auth_utils import resolve_user_email, is_safe_public_url, resolve_llm_target
 
 router = APIRouter(prefix="/api/powerups", tags=["User Powerups"])
 
@@ -80,9 +80,7 @@ class FlashcardsReq(BaseModel):
 
 
 async def _ask_llm(system_prompt: str, user_prompt: str, api_key: Optional[str] = None, model: Optional[str] = None, base_url: Optional[str] = None) -> str:
-    key = api_key or AIM_API_KEY
-    mdl = model or AIM_MODEL
-    base = (base_url or AIM_BASE_URL).rstrip("/")
+    key, mdl, base = resolve_llm_target(api_key, model, base_url, AIM_API_KEY, AIM_MODEL, AIM_BASE_URL)
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
             f"{base}/v1/chat/completions",
@@ -334,7 +332,7 @@ async def summarize_web_url(req: UrlSummarizeReq, authorization: Optional[str] =
         log_audit(email, "powerup.url_summarized", "url", url[:120])
         return {"title": page_title, "url": url, "summary": summary}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Failed to fetch or summarize URL: {str(e)}"})
+        return JSONResponse(status_code=500, content={"error": "Could not fetch or summarize that URL."})
 
 
 # --- 5. AI Flashcards & Quiz Generator ---

@@ -287,21 +287,43 @@ def ensure_tables(pool: ConnectionPool) -> None:
                 )
                 cur.execute(
                     """
-                    -- Seed Super Admin Account (hashed password)
-                    INSERT INTO public.app_users (email, full_name, password_hash, role, is_superadmin, is_active, job_title, department)
-                    VALUES ('mijanur@renim.ai', 'Mijanur (Super Admin)', %s, 'superadmin', true, true, 'Platform Super Admin', 'Executive')
-                    ON CONFLICT (email) DO UPDATE SET
-                        password_hash = CASE
-                            WHEN public.app_users.password_hash IS NULL OR public.app_users.password_hash = '' OR public.app_users.password_hash NOT LIKE 'pbkdf2_sha256$%%'
-                            THEN EXCLUDED.password_hash
-                            ELSE public.app_users.password_hash
-                        END,
-                        role = 'superadmin',
-                        is_superadmin = true,
-                        is_active = true;
-                    """,
-                    (hash_password("1234567890"),),
+                    -- Monthly credit cycle, payment idempotency & query indexes
+                    ALTER TABLE public.org_subscriptions ADD COLUMN IF NOT EXISTS period_start timestamptz DEFAULT now();
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_provider_session
+                        ON public.billing_invoices (provider, provider_session_id) WHERE provider_session_id <> '';
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_api_keys_hash ON public.api_keys (key_hash);
+                    CREATE INDEX IF NOT EXISTS ix_tasks_user ON public.tasks (LOWER(user_email));
+                    CREATE INDEX IF NOT EXISTS ix_tasks_org ON public.tasks (org_id);
+                    CREATE INDEX IF NOT EXISTS ix_notes_user ON public.notes (LOWER(user_email));
+                    CREATE INDEX IF NOT EXISTS ix_notes_org ON public.notes (org_id);
+                    CREATE INDEX IF NOT EXISTS ix_meetings_user ON public.meetings (LOWER(user_email));
+                    CREATE INDEX IF NOT EXISTS ix_meetings_org ON public.meetings (org_id);
+                    CREATE INDEX IF NOT EXISTS ix_calendar_user ON public.calendar_events (LOWER(user_email));
+                    CREATE INDEX IF NOT EXISTS ix_docs_user ON public.user_documents (LOWER(user_email));
+                    CREATE INDEX IF NOT EXISTS ix_chat_user ON public.chat_sessions (LOWER(user_email));
+                    CREATE INDEX IF NOT EXISTS ix_members_user ON public.org_members (LOWER(user_email));
+                    CREATE INDEX IF NOT EXISTS ix_audit_org_time ON public.audit_logs (org_id, created_at DESC);
+                    CREATE INDEX IF NOT EXISTS ix_usage_user_time ON public.usage_logs (user_email, created_at DESC);
+                    ALTER TABLE public.shared_links ADD COLUMN IF NOT EXISTS expires_at timestamptz;
+                    ALTER TABLE public.shared_links ADD COLUMN IF NOT EXISTS revoked boolean NOT NULL DEFAULT false;
+                    """
                 )
+                # Super Admin is seeded only from environment variables, never from source code.
+                sa_email = os.getenv("SUPERADMIN_EMAIL", "").strip().lower()
+                sa_password = os.getenv("SUPERADMIN_PASSWORD", "")
+                if sa_email and sa_password:
+                    if len(sa_password) < 12:
+                        print("Warning: SUPERADMIN_PASSWORD must be at least 12 characters; super admin not seeded.")
+                    else:
+                        # Creates the account if missing; never overwrites an existing password.
+                        cur.execute(
+                            """
+                            INSERT INTO public.app_users (email, full_name, password_hash, role, is_superadmin, is_active, job_title, department)
+                            VALUES (%s, 'Super Admin', %s, 'superadmin', true, true, 'Platform Super Admin', 'Executive')
+                            ON CONFLICT (email) DO UPDATE SET role = 'superadmin', is_superadmin = true;
+                            """,
+                            (sa_email, hash_password(sa_password)),
+                        )
     except Exception as e:
         print("Warning ensuring database tables:", e)
 
@@ -504,6 +526,16 @@ def check_ai_credits(user_email: str, org_id: str = "") -> tuple[bool, int, int]
     try:
         with db_pool.connection() as conn:
             with conn.cursor() as cur:
+                # Monthly credit cycle: reset usage once the current 30-day period has elapsed.
+                cur.execute(
+                    """
+                    UPDATE public.org_subscriptions
+                    SET ai_credits_used = 0, period_start = now(), updated_at = now()
+                    WHERE COALESCE(period_start, updated_at, now()) < now() - interval '30 days'
+                      AND ((%s <> 'personal' AND org_id = %s) OR (LOWER(user_email) = %s AND org_id = 'personal'));
+                    """,
+                    (oid, oid, email),
+                )
                 cur.execute(
                     """
                     SELECT ai_credits_used, ai_credits_limit
@@ -558,3 +590,82 @@ def resolve_org_access(user_email: str, org_id: Optional[str]) -> tuple[bool, st
                 return (True, str(row.get("role") or "member").lower())
     except Exception:
         return (False, "none")
+
+
+def resolve_api_key_email(raw_key: str) -> Optional[str]:
+    """Authenticates a `sk_renim_...` API key and returns its owner's email (or None)."""
+    from auth_utils import hash_api_key
+    if not db_pool or not raw_key:
+        return None
+    try:
+        with db_pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE public.api_keys SET last_used_at = now() WHERE key_hash = %s RETURNING user_email;",
+                    (hash_api_key(raw_key.strip()),),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                email = str(row["user_email"]).strip().lower()
+                return email if is_user_active(email) else None
+    except Exception:
+        return None
+
+
+def get_token_version(email: str) -> int:
+    if not db_pool or not email:
+        return 1
+    try:
+        with db_pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT token_version FROM public.app_users WHERE email = %s;", (email.strip().lower(),))
+                row = cur.fetchone()
+                return int((row or {}).get("token_version") or 1)
+    except Exception:
+        return 1
+
+
+async def dispatch_webhook_event(user_email: str, org_id: str, event: str, data: dict) -> None:
+    """Delivers an event to every enabled integration webhook subscribed to it (best effort)."""
+    import httpx
+    from auth_utils import is_safe_public_url
+    if not db_pool:
+        return
+    oid = org_id or ""
+    try:
+        with db_pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT provider, webhook_url, events FROM public.integration_configs
+                    WHERE is_enabled = true AND webhook_url <> ''
+                      AND (LOWER(user_email) = %s OR (%s NOT IN ('', 'personal') AND org_id = %s));
+                    """,
+                    (user_email.strip().lower(), oid, oid),
+                )
+                configs = cur.fetchall()
+    except Exception as e:
+        print("Webhook lookup warning:", e)
+        return
+    for cfg in configs:
+        events = cfg.get("events") or []
+        if isinstance(events, str):
+            try:
+                events = json.loads(events)
+            except Exception:
+                events = []
+        if events and event not in events:
+            continue
+        url = cfg["webhook_url"]
+        if not is_safe_public_url(url):
+            continue
+        title = data.get("title") or event
+        body = {"event": event, "data": data}
+        if cfg.get("provider") in ("slack", "teams", "discord"):
+            body = {"text": "Renim AI - " + event + ": " + str(title), "content": "Renim AI - " + event + ": " + str(title), **body}
+        try:
+            async with httpx.AsyncClient(timeout=8.0, follow_redirects=False) as client:
+                await client.post(url, json=body)
+        except Exception as e:
+            print("Webhook delivery warning:", cfg.get("provider"), e)

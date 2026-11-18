@@ -10,8 +10,8 @@ from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from db import get_db_pool, track_ai_usage, log_audit, check_ai_credits, is_user_active
-from auth_utils import resolve_user_email
+from db import get_db_pool, track_ai_usage, log_audit, check_ai_credits, is_user_active, resolve_org_access
+from auth_utils import resolve_user_email, server_error, resolve_llm_target
 
 router = APIRouter(prefix="/api/rag", tags=["Enterprise Knowledge RAG"])
 
@@ -62,7 +62,8 @@ def _snippet(text: str, query_tokens: List[str], max_len: int = 260) -> str:
     return clean[:max_len] + "..."
 
 
-def _gather_workspace_hits(email: str, query: str, top_k: int = 8) -> List[Dict[str, Any]]:
+def _gather_workspace_hits(email: str, query: str, top_k: int = 8, org_id: str = "") -> List[Dict[str, Any]]:
+    """Searches the user's own records plus, when an org is active, records shared in that org."""
     pool = get_db_pool()
     if not pool:
         return []
@@ -70,6 +71,8 @@ def _gather_workspace_hits(email: str, query: str, top_k: int = 8) -> List[Dict[
     if not tokens:
         tokens = [query.strip().lower()]
     hits: List[Dict[str, Any]] = []
+    oid = "" if (org_id or "").strip() in ("", "personal") else org_id.strip()
+    top_k = max(1, min(int(top_k or 8), 20))
     with pool.connection() as conn:
         with conn.cursor() as cur:
             # 1. Documents
@@ -77,10 +80,10 @@ def _gather_workspace_hits(email: str, query: str, top_k: int = 8) -> List[Dict[
                 """
                 SELECT id::text, filename, file_type, summary, extracted_text, created_at
                 FROM public.user_documents
-                WHERE LOWER(user_email) = %s
+                WHERE LOWER(user_email) = %s OR (%s <> '' AND org_id = %s)
                 ORDER BY created_at DESC LIMIT 60
                 """,
-                (email,),
+                (email, oid, oid),
             )
             for r in cur.fetchall():
                 body = f"{r.get('summary', '')}\n{r.get('extracted_text', '')[:6000]}"
@@ -100,10 +103,10 @@ def _gather_workspace_hits(email: str, query: str, top_k: int = 8) -> List[Dict[
                 """
                 SELECT id::text, title, content, tags, created_at
                 FROM public.notes
-                WHERE LOWER(user_email) = %s
+                WHERE LOWER(user_email) = %s OR (%s <> '' AND org_id = %s)
                 ORDER BY created_at DESC LIMIT 80
                 """,
-                (email,),
+                (email, oid, oid),
             )
             for r in cur.fetchall():
                 body = f"{r.get('content', '')} {r.get('tags', '')}"
@@ -123,10 +126,10 @@ def _gather_workspace_hits(email: str, query: str, top_k: int = 8) -> List[Dict[
                 """
                 SELECT id::text, title, summary, raw_transcript, created_at
                 FROM public.meetings
-                WHERE LOWER(user_email) = %s
+                WHERE LOWER(user_email) = %s OR (%s <> '' AND org_id = %s)
                 ORDER BY created_at DESC LIMIT 60
                 """,
-                (email,),
+                (email, oid, oid),
             )
             for r in cur.fetchall():
                 body = f"{r.get('summary', '')}\n{(r.get('raw_transcript') or '')[:5000]}"
@@ -146,10 +149,10 @@ def _gather_workspace_hits(email: str, query: str, top_k: int = 8) -> List[Dict[
                 """
                 SELECT id::text, title, description, status, priority, created_at
                 FROM public.tasks
-                WHERE LOWER(user_email) = %s
+                WHERE LOWER(user_email) = %s OR (%s <> '' AND org_id = %s)
                 ORDER BY created_at DESC LIMIT 80
                 """,
-                (email,),
+                (email, oid, oid),
             )
             for r in cur.fetchall():
                 body = f"{r.get('description', '')} [{r.get('status', '')} / {r.get('priority', '')}]"
@@ -172,32 +175,40 @@ def _gather_workspace_hits(email: str, query: str, top_k: int = 8) -> List[Dict[
 async def rag_search(
     req: RagQueryRequest,
     authorization: Optional[str] = Header(default=None),
+    x_org_id: Optional[str] = Header(default=None),
 ):
     email = resolve_user_email(authorization, req.user_email)
+    org_id = (x_org_id or "").strip()
+    if not resolve_org_access(email, org_id)[0]:
+        return JSONResponse(status_code=403, content={"error": "Access denied to this organization."})
     if not req.query.strip():
         return {"hits": [], "query": req.query}
     try:
-        hits = _gather_workspace_hits(email, req.query, req.top_k)
+        hits = _gather_workspace_hits(email, req.query, req.top_k, org_id)
         return {"hits": hits, "total": len(hits), "query": req.query}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.post("/ask")
 async def rag_ask(
     req: RagQueryRequest,
     authorization: Optional[str] = Header(default=None),
+    x_org_id: Optional[str] = Header(default=None),
 ):
     email = resolve_user_email(authorization, req.user_email)
     if not is_user_active(email):
         return JSONResponse(status_code=403, content={"error": "Account is suspended."})
-    allowed, used, limit = check_ai_credits(email)
+    org_id = (x_org_id or "").strip()
+    if not resolve_org_access(email, org_id)[0]:
+        return JSONResponse(status_code=403, content={"error": "Access denied to this organization."})
+    allowed, used, limit = check_ai_credits(email, org_id)
     if not allowed:
         return JSONResponse(status_code=402, content={"error": f"AI credit limit reached ({used}/{limit}). Please upgrade your plan."})
     if not req.query.strip():
         return JSONResponse(status_code=400, content={"error": "Query is required"})
     try:
-        hits = _gather_workspace_hits(email, req.query, req.top_k)
+        hits = _gather_workspace_hits(email, req.query, req.top_k, org_id)
         context_blocks = []
         for idx, h in enumerate(hits, 1):
             context_blocks.append(
@@ -205,9 +216,7 @@ async def rag_ask(
             )
         context_text = "\n\n".join(context_blocks) if context_blocks else "No matching workspace records found."
 
-        key = req.api_key or AIM_API_KEY
-        model = req.model or AIM_MODEL
-        base = (req.base_url or AIM_BASE_URL).rstrip("/")
+        key, model, base = resolve_llm_target(req.api_key, req.model, req.base_url, AIM_API_KEY, AIM_MODEL, AIM_BASE_URL)
 
         system_prompt = (
             "You are Renim AI Enterprise Knowledge Copilot. Answer the user's question strictly using "
@@ -235,8 +244,8 @@ async def rag_ask(
                 or "Unable to synthesize answer from AI gateway."
             )
 
-        track_ai_usage(email, "enterprise_rag_ask", credits_used=2, tokens_est=len(context_text) // 4 + 300)
+        track_ai_usage(email, "enterprise_rag_ask", credits_used=2, tokens_est=len(context_text) // 4 + 300, org_id=org_id)
         log_audit(email, "rag.query", "knowledge_hub", "", {"query": req.query[:120], "hits": len(hits)})
         return {"answer": answer, "citations": hits, "query": req.query}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))

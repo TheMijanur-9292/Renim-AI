@@ -7,7 +7,7 @@ from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 
 from db import get_db_pool
-from auth_utils import resolve_user_email
+from auth_utils import resolve_user_email, server_error
 
 router = APIRouter(prefix="/api/analytics", tags=["Analytics & BI"])
 
@@ -106,4 +106,4 @@ async def get_analytics_overview(
                     "recent_activity": recent_activity,
                 }
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))

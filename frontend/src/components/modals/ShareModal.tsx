@@ -1,4 +1,5 @@
 import React from 'react';
+import { sanitizeHtml } from '../../utils/sanitize';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -63,7 +64,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           <h3 style={{ margin: '0 0 10px 0', fontSize: '18px' }}>{noteTitle || 'Untitled Note'}</h3>
           <div
             style={{ fontSize: '13.5px', lineHeight: 1.6, color: 'var(--mui-text-primary)', maxHeight: '200px', overflowY: 'auto' }}
-            dangerouslySetInnerHTML={{ __html: noteEditorHtml || noteContent || '<em>Empty note.</em>' }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(noteEditorHtml || noteContent || '') || '<em>Empty note.</em>' }}
           />
         </div>
       </div>

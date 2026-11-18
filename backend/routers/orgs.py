@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from db import get_db_pool, log_audit
-from auth_utils import resolve_user_email, has_min_role
+from auth_utils import resolve_user_email, has_min_role, server_error
 
 router = APIRouter(prefix="/api/orgs", tags=["Organizations & RBAC"])
 
@@ -56,7 +56,7 @@ async def list_organizations(
                            (SELECT COUNT(*) FROM public.org_members om WHERE om.org_id = o.id) AS member_count
                     FROM public.organizations o
                     JOIN public.org_members m ON m.org_id = o.id
-                    WHERE m.user_email = %s
+                    WHERE m.user_email = %s AND COALESCE(m.status, 'active') = 'active'
                     ORDER BY o.created_at ASC
                     """,
                     (email,),
@@ -86,7 +86,7 @@ async def list_organizations(
                     rows = [new_org]
                 return {"organizations": rows, "active_email": email}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.post("", status_code=201)
@@ -134,7 +134,7 @@ async def create_organization(
         )
         return {"organization": org}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.get("/{org_id}/members")
@@ -151,7 +151,7 @@ async def list_org_members(
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT role FROM public.org_members WHERE org_id = %s::uuid AND user_email = %s",
+                    "SELECT role FROM public.org_members WHERE org_id = %s::uuid AND user_email = %s AND COALESCE(status, 'active') = 'active'",
                     (org_id, email),
                 )
                 me = cur.fetchone()
@@ -168,7 +168,7 @@ async def list_org_members(
                 )
                 return {"members": cur.fetchall(), "my_role": me["role"]}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.post("/{org_id}/invite", status_code=201)
@@ -190,12 +190,14 @@ async def invite_org_member(
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT role FROM public.org_members WHERE org_id = %s::uuid AND user_email = %s",
+                    "SELECT role FROM public.org_members WHERE org_id = %s::uuid AND user_email = %s AND COALESCE(status, 'active') = 'active'",
                     (org_id, actor),
                 )
                 me = cur.fetchone()
                 if not me or not has_min_role(me["role"], "admin"):
                     return JSONResponse(status_code=403, content={"error": "Admin or Owner role required to invite members"})
+                if role == "admin" and me["role"] != "owner":
+                    return JSONResponse(status_code=403, content={"error": "Only the owner can invite admins."})
 
                 # Enforce Subscription Seat Limit for new members
                 cur.execute("SELECT 1 FROM public.org_members WHERE org_id = %s::uuid AND user_email = %s", (org_id, invitee))
@@ -232,9 +234,9 @@ async def invite_org_member(
                 cur.execute(
                     """
                     INSERT INTO public.org_members (org_id, user_email, full_name, role, status, invited_by)
-                    VALUES (%s::uuid, %s, %s, %s, 'active', %s)
+                    VALUES (%s::uuid, %s, %s, %s, 'pending', %s)
                     ON CONFLICT (org_id, user_email)
-                    DO UPDATE SET role = EXCLUDED.role, full_name = COALESCE(NULLIF(EXCLUDED.full_name, ''), public.org_members.full_name)
+                    DO UPDATE SET full_name = COALESCE(NULLIF(EXCLUDED.full_name, ''), public.org_members.full_name)
                     RETURNING id::text, org_id::text, user_email, full_name, role, status, invited_by, created_at
                     """,
                     (org_id, invitee, req.full_name.strip() or invitee.split("@")[0], role, actor),
@@ -251,7 +253,7 @@ async def invite_org_member(
         )
         return {"member": member}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.patch("/{org_id}/members/{member_email}")
@@ -273,12 +275,30 @@ async def update_member_role(
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT role FROM public.org_members WHERE org_id = %s::uuid AND user_email = %s",
+                    "SELECT role FROM public.org_members WHERE org_id = %s::uuid AND user_email = %s AND COALESCE(status, 'active') = 'active'",
                     (org_id, actor),
                 )
                 me = cur.fetchone()
                 if not me or not has_min_role(me["role"], "admin"):
                     return JSONResponse(status_code=403, content={"error": "Admin or Owner role required"})
+                target_email = member_email.strip().lower()
+                cur.execute(
+                    "SELECT role FROM public.org_members WHERE org_id = %s::uuid AND user_email = %s",
+                    (org_id, target_email),
+                )
+                target = cur.fetchone()
+                if not target:
+                    return JSONResponse(status_code=404, content={"error": "Member not found"})
+                is_owner = me["role"] == "owner"
+                if not is_owner and (new_role in ("owner", "admin") or target["role"] in ("owner", "admin")):
+                    return JSONResponse(status_code=403, content={"error": "Only the owner can grant or change admin/owner roles."})
+                if target["role"] == "owner" and new_role != "owner":
+                    cur.execute(
+                        "SELECT COUNT(*) AS cnt FROM public.org_members WHERE org_id = %s::uuid AND role = 'owner' AND COALESCE(status, 'active') = 'active'",
+                        (org_id,),
+                    )
+                    if int(cur.fetchone()["cnt"]) <= 1:
+                        return JSONResponse(status_code=400, content={"error": "An organization must keep at least one owner."})
                 cur.execute(
                     """
                     UPDATE public.org_members
@@ -302,7 +322,7 @@ async def update_member_role(
         )
         return {"member": updated}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 @router.delete("/{org_id}/members/{member_email}")
@@ -322,7 +342,7 @@ async def remove_org_member(
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT role FROM public.org_members WHERE org_id = %s::uuid AND user_email = %s",
+                    "SELECT role FROM public.org_members WHERE org_id = %s::uuid AND user_email = %s AND COALESCE(status, 'active') = 'active'",
                     (org_id, actor),
                 )
                 me = cur.fetchone()
@@ -330,6 +350,17 @@ async def remove_org_member(
                     return JSONResponse(status_code=403, content={"error": "Admin or Owner role required"})
                 if target == actor:
                     return JSONResponse(status_code=400, content={"error": "Cannot remove yourself"})
+                cur.execute(
+                    "SELECT role FROM public.org_members WHERE org_id = %s::uuid AND user_email = %s",
+                    (org_id, target),
+                )
+                target_row = cur.fetchone()
+                if not target_row:
+                    return JSONResponse(status_code=404, content={"error": "Member not found"})
+                if target_row["role"] in ("owner", "admin") and me["role"] != "owner":
+                    return JSONResponse(status_code=403, content={"error": "Only the owner can remove admins or owners."})
+                if target_row["role"] == "owner":
+                    return JSONResponse(status_code=400, content={"error": "Transfer ownership before removing an owner."})
                 cur.execute(
                     "DELETE FROM public.org_members WHERE org_id = %s::uuid AND user_email = %s",
                     (org_id, target),
@@ -345,4 +376,4 @@ async def remove_org_member(
         )
         return {"status": "removed", "email": target}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))

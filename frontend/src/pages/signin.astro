@@ -426,7 +426,7 @@
             </div>
             <div id="reset-fields" style="display:none; flex-direction:column; gap:8px;">
               <input type="text" id="reset-token-input" class="auth-input" style="padding-left:12px;" placeholder="Paste reset token" />
-              <input type="password" id="reset-pass-input" class="auth-input" style="padding-left:12px;" placeholder="New password (min 6 chars)" />
+              <input type="password" id="reset-pass-input" class="auth-input" style="padding-left:12px;" placeholder="New password (min 8 chars, letters + numbers)" />
               <button type="button" id="reset-confirm-btn" class="auth-submit-btn" style="font-size:13px;">Update Password</button>
             </div>
           </div>
@@ -528,6 +528,17 @@
       const em = emailInput.value.trim();
       if (em) document.getElementById('forgot-email').value = em;
     });
+
+    // Reset link from email: /signin?reset_token=...  -> open the reset form pre-filled, then drop the token from the URL.
+    try {
+      const urlToken = new URLSearchParams(window.location.search).get('reset_token');
+      if (urlToken) {
+        forgotBox.style.display = 'block';
+        resetFields.style.display = 'flex';
+        document.getElementById('reset-token-input').value = urlToken;
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    } catch (e) {}
 
     forgotSendBtn.addEventListener('click', async () => {
       const em = document.getElementById('forgot-email').value.trim();

@@ -18,7 +18,7 @@ import io
 import httpx
 import pypdf
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form, Header, Request
+from fastapi import FastAPI, UploadFile, File, Form, Header, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
@@ -35,6 +35,7 @@ NEON_CONN_STRING = os.getenv("DATABASE_URL", "")
 AIM_BASE_URL = os.getenv("AIM_BASE_URL", "https://2c-aim-api.2coms.com").rstrip("/")
 AIM_API_KEY = os.getenv("AIM_API_KEY", "")
 AIM_MODEL = os.getenv("AIM_MODEL", "qwen2.5")
+AI_MAX_TOKENS_CAP = int(os.getenv("AI_MAX_TOKENS_CAP", "4000"))
 
 from db import (
     init_db_pool,
@@ -46,8 +47,13 @@ from db import (
     check_ai_credits,
     check_storage_quota,
     resolve_org_access,
+    get_token_version,
+    dispatch_webhook_event,
 )
 from auth_utils import (
+    client_ip,
+    validate_password_strength,
+    server_error,
     create_access_token,
     resolve_user_email,
     resolve_authenticated_email,
@@ -120,7 +126,7 @@ _METRICS = {"requests_total": 0, "errors_5xx": 0, "rate_limited": 0}
 async def enterprise_rate_limit_and_metrics(request: Request, call_next):
     _METRICS["requests_total"] += 1
     if request.url.path.startswith("/api/"):
-        ip = request.client.host if request.client else "127.0.0.1"
+        ip = client_ip(request)
         allowed, retry_after = check_rate_limit(f"api:{ip}", max_requests=180, window_seconds=60)
         if not allowed:
             _METRICS["rate_limited"] += 1
@@ -137,7 +143,16 @@ async def enterprise_rate_limit_and_metrics(request: Request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(self), geolocation=()")
-    response.headers.setdefault("X-XSS-Protection", "1; mode=block")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    if not request.url.path.startswith(("/docs", "/redoc", "/openapi")):
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; "
+            "media-src 'self' blob: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+        )
     return response
 
 app.include_router(orgs_router)
@@ -329,11 +344,19 @@ async def ai_chat_proxy(
     if not allowed:
         return JSONResponse(status_code=402, content={"error": f"AI credit limit reached ({used}/{limit}). Please upgrade your plan."})
 
+    if not payload.messages or len(payload.messages) > 60:
+        return JSONResponse(status_code=400, content={"error": "Provide between 1 and 60 messages."})
+    prompt_chars = sum(len(str(m.get("content", ""))) for m in payload.messages if isinstance(m, dict))
+    if prompt_chars > 120_000:
+        return JSONResponse(status_code=413, content={"error": "Conversation is too long. Start a new chat."})
+    max_tokens = max(64, min(int(payload.max_tokens or 1500), AI_MAX_TOKENS_CAP))
+    temperature = payload.temperature if payload.temperature is not None else 0.3
     post_data = {
-        "model": payload.model or AIM_MODEL,
+        # Model is fixed server-side: clients cannot switch to a more expensive model.
+        "model": AIM_MODEL,
         "messages": payload.messages,
-        "temperature": payload.temperature if payload.temperature is not None else 0.3,
-        "max_tokens": payload.max_tokens or 1500,
+        "temperature": max(0.0, min(float(temperature), 1.5)),
+        "max_tokens": max_tokens,
     }
 
     target_url = f"{AIM_BASE_URL}/v1/chat/completions"
@@ -353,16 +376,19 @@ async def ai_chat_proxy(
             try:
                 data = resp.json()
                 if resp.status_code == 200:
-                    track_ai_usage(email, "ai_chat", credits_used=1, org_id=org_id)
-                return JSONResponse(status_code=resp.status_code, content=data)
+                    usage = data.get("usage") or {}
+                    total_tokens = int(usage.get("total_tokens") or (prompt_chars // 4 + max_tokens // 2))
+                    credits = max(1, -(-total_tokens // 2000))  # 1 credit per 2k tokens, rounded up
+                    track_ai_usage(email, "ai_chat", credits_used=credits, tokens_est=total_tokens, org_id=org_id)
+                    return JSONResponse(status_code=200, content=data)
+                print("AI gateway returned", resp.status_code, str(data)[:500])
+                return JSONResponse(status_code=502, content={"error": "AI service is temporarily unavailable."})
             except Exception:
-                return JSONResponse(
-                    status_code=resp.status_code, content={"error": resp.text}
-                )
+                print("AI gateway non-JSON response", resp.status_code, resp.text[:500])
+                return JSONResponse(status_code=502, content={"error": "AI service is temporarily unavailable."})
     except Exception as exc:
-        return JSONResponse(
-            status_code=502, content={"error": f"AI Gateway error: {str(exc)}"}
-        )
+        print("AI gateway error:", exc)
+        return JSONResponse(status_code=502, content={"error": "AI service is temporarily unavailable."})
 
 
 # ================= 2. NEON DATABASE REST API =================
@@ -383,7 +409,7 @@ def health_check():
                 }
     except Exception as exc:
         return JSONResponse(
-            status_code=500, content={"status": "error", "error": str(exc)}
+            status_code=500, content={"status": "error", "error": "database unavailable"}
         )
 
 
@@ -441,12 +467,13 @@ def get_tasks(
                 rows = cur.fetchall()
                 return [serialize_row(r) for r in rows]
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/tasks", status_code=201)
 def create_task(
     task: TaskCreate,
+    background_tasks: BackgroundTasks,
     authorization: Optional[str] = Header(default=None),
     x_org_id: Optional[str] = Header(default=None),
 ):
@@ -464,8 +491,8 @@ def create_task(
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO public.tasks (user_email, org_id, title, description, priority, status, due_date, source_type)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *;
+                    INSERT INTO public.tasks (user_email, org_id, title, description, priority, status, due_date, source_type, subtasks, assigned_to)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s) RETURNING *;
                     """,
                     (
                         email,
@@ -476,12 +503,18 @@ def create_task(
                         task.status or "todo",
                         task.due_date or None,
                         task.source_type or "manual",
+                        json.dumps(task.subtasks or []),
+                        (task.assignee or "").strip().lower(),
                     ),
                 )
-                row = cur.fetchone()
-                return serialize_row(row)
+                row = serialize_row(cur.fetchone())
+                background_tasks.add_task(
+                    dispatch_webhook_event, email, org_id, "task.created",
+                    {"id": row.get("id"), "title": row.get("title"), "priority": row.get("priority"), "due_date": row.get("due_date")},
+                )
+                return row
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.patch("/api/tasks/{task_id}")
@@ -538,7 +571,7 @@ def update_task(
                     return JSONResponse(status_code=404, content={"error": "Task not found or access denied."})
                 return serialize_row(row)
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.delete("/api/tasks/{task_id}")
@@ -568,7 +601,7 @@ def delete_task(
                     return JSONResponse(status_code=404, content={"error": "Task not found or access denied."})
                 return {"deleted": True, "id": task_id}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 # --- Notes API (Per-User Isolated) ---
@@ -602,7 +635,7 @@ def get_notes(
                 rows = cur.fetchall()
                 return [serialize_row(r) for r in rows]
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/notes", status_code=201)
@@ -640,7 +673,7 @@ def create_note(
                 row = cur.fetchone()
                 return serialize_row(row)
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.put("/api/notes/{note_id}")
@@ -692,7 +725,7 @@ def update_note(
                     return JSONResponse(status_code=404, content={"error": "Note not found or access denied."})
                 return serialize_row(row)
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.delete("/api/notes/{note_id}")
@@ -722,7 +755,7 @@ def delete_note(
                     return JSONResponse(status_code=404, content={"error": "Note not found or access denied."})
                 return {"deleted": True, "id": note_id}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 # --- Calendar Events API (Per-User & Org Isolated with RBAC) ---
@@ -756,7 +789,7 @@ def get_calendar_events(
                 rows = cur.fetchall()
                 return [serialize_row(r) for r in rows]
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/calendar", status_code=201)
@@ -797,7 +830,61 @@ def create_calendar_event(
                 row = cur.fetchone()
                 return serialize_row(row)
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
+
+
+class CalendarEventUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    event_date: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    category: Optional[str] = None
+    reminder_minutes: Optional[int] = None
+
+
+@app.patch("/api/calendar/{event_id}")
+@app.put("/api/calendar/{event_id}")
+def update_calendar_event(
+    event_id: str,
+    ev: CalendarEventUpdate,
+    authorization: Optional[str] = Header(default=None),
+    x_org_id: Optional[str] = Header(default=None),
+):
+    email = resolve_user_email(authorization)
+    if not is_user_active(email):
+        return JSONResponse(status_code=403, content={"error": "Account is suspended."})
+    org_id = (x_org_id or "").strip()
+    allowed, role = resolve_org_access(email, org_id)
+    if not allowed:
+        return JSONResponse(status_code=403, content={"error": "Access denied to this organization."})
+    if role == "viewer":
+        return JSONResponse(status_code=403, content={"error": "Viewer role is read-only in this organization."})
+    scope_sql, scope_val = ("org_id = %s", org_id) if org_id and org_id != "personal" else ("LOWER(user_email) = %s", email)
+    try:
+        with db_pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    UPDATE public.calendar_events
+                    SET title = COALESCE(%s, title),
+                        description = COALESCE(%s, description),
+                        event_date = COALESCE(%s::date, event_date),
+                        start_time = COALESCE(%s::time, start_time),
+                        end_time = COALESCE(%s::time, end_time),
+                        category = COALESCE(%s, category),
+                        reminder_minutes = COALESCE(%s, reminder_minutes)
+                    WHERE id = %s AND {scope_sql} RETURNING *;
+                    """,
+                    (ev.title, ev.description, ev.event_date, ev.start_time, ev.end_time, ev.category,
+                     ev.reminder_minutes, event_id, scope_val),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return JSONResponse(status_code=404, content={"error": "Event not found or access denied."})
+                return serialize_row(row)
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.delete("/api/calendar/{event_id}")
@@ -827,7 +914,14 @@ def delete_calendar_event(
                     return JSONResponse(status_code=404, content={"error": "Event not found or access denied."})
                 return {"deleted": True, "id": event_id}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
+
+
+def _ics_escape(text: str) -> str:
+    return (
+        str(text).replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+        .replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", " ")
+    )
 
 
 @app.get("/api/calendar/export-ics")
@@ -856,8 +950,8 @@ def export_calendar_ics(user_email: str = "guest@renimai.com", authorization: Op
         for r in rows:
             ev = serialize_row(r)
             ev_id = ev.get("id", "event")
-            title = (ev.get("title") or "Renim AI Event").replace("\n", " ")
-            desc = (ev.get("description") or f"Category: {ev.get('category', 'Work')}").replace("\n", " ")
+            title = _ics_escape(ev.get("title") or "Renim AI Event")
+            desc = _ics_escape(ev.get("description") or f"Category: {ev.get('category', 'Work')}")
             date_str = (ev.get("event_date") or "").replace("-", "")
             time_str = (ev.get("start_time") or "09:00:00").replace(":", "")[:6]
             if len(time_str) < 6:
@@ -882,15 +976,25 @@ def export_calendar_ics(user_email: str = "guest@renimai.com", authorization: Op
             headers={"Content-Disposition": "attachment; filename=renim_ai_calendar.ics"},
         )
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/calendar/import-ics")
-async def import_calendar_ics(file: UploadFile = File(...), user_email: str = Form("guest@renimai.com")):
+async def import_calendar_ics(
+    file: UploadFile = File(...),
+    user_email: str = Form("guest@renimai.com"),
+    authorization: Optional[str] = Header(default=None),
+):
     """Imports events from a Google Calendar / iCal (.ics) file into Neon DB."""
-    email = user_email.strip().lower()
+    email = resolve_authenticated_email(authorization)
+    if not email:
+        return JSONResponse(status_code=401, content={"error": "Sign in to import a calendar."})
+    if not is_user_active(email):
+        return JSONResponse(status_code=403, content={"error": "Account is suspended."})
     try:
-        content_bytes = await file.read()
+        content_bytes = await file.read(2 * 1024 * 1024 + 1)
+        if len(content_bytes) > 2 * 1024 * 1024:
+            return JSONResponse(status_code=413, content={"error": "Calendar file must be under 2 MB."})
         text = content_bytes.decode("utf-8", errors="ignore")
         events_created = 0
         current_event = {}
@@ -928,13 +1032,15 @@ async def import_calendar_ics(file: UploadFile = File(...), user_email: str = Fo
                             (email, title, desc, event_date, start_time, "Meeting", 15),
                         )
                         events_created += 1
+                        if events_created >= 1000:
+                            break
                     elif in_event and ":" in line:
                         k, v = line.split(":", 1)
                         clean_k = k.split(";")[0]
                         current_event[clean_k] = v
         return {"imported": True, "count": events_created}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/notifications/send-email")
@@ -946,9 +1052,15 @@ async def send_email_notification(req: SendEmailRequest, authorization: Optional
     if not is_user_active(authed):
         return JSONResponse(status_code=403, content={"error": "Account is suspended."})
     key = (req.resend_api_key or os.getenv("RESEND_API_KEY", "")).strip()
-    to_email = req.to_email.strip()
+    to_email = req.to_email.strip().lower()
     if not to_email:
         return JSONResponse(status_code=400, content={"error": "Recipient email required"})
+    # Notifications go only to the account owner, so this endpoint cannot be used as a spam/phishing relay.
+    if to_email != authed:
+        return JSONResponse(status_code=403, content={"error": "Notifications can only be sent to your own account email."})
+    allowed, retry_after = check_rate_limit(f"email:{authed}", max_requests=20, window_seconds=3600)
+    if not allowed:
+        return JSONResponse(status_code=429, content={"error": f"Email limit reached. Retry in {retry_after}s."})
 
     if key:
         try:
@@ -966,9 +1078,10 @@ async def send_email_notification(req: SendEmailRequest, authorization: Optional
                 if res.status_code in (200, 201):
                     return {"status": "sent", "resend_id": res.json().get("id")}
                 else:
-                    return JSONResponse(status_code=res.status_code, content={"error": res.text})
+                    print("Resend error", res.status_code, res.text[:300])
+                    return JSONResponse(status_code=502, content={"error": "Email provider rejected the message."})
         except Exception as exc:
-            return JSONResponse(status_code=500, content={"error": str(exc)})
+            return JSONResponse(status_code=500, content=server_error(exc))
     else:
         # Simulation mode if no key configured
         return {
@@ -1010,12 +1123,13 @@ def get_meetings(
                 rows = cur.fetchall()
                 return [serialize_row(r) for r in rows]
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/meetings", status_code=201)
 def create_meeting(
     m: MeetingCreate,
+    background_tasks: BackgroundTasks,
     authorization: Optional[str] = Header(default=None),
     x_org_id: Optional[str] = Header(default=None),
 ):
@@ -1049,10 +1163,16 @@ def create_meeting(
                         json.dumps(m.action_items or []),
                     ),
                 )
-                row = cur.fetchone()
-                return serialize_row(row)
+                row = serialize_row(cur.fetchone())
+                if row.get("summary"):
+                    background_tasks.add_task(
+                        dispatch_webhook_event, email, org_id, "meeting.summarized",
+                        {"id": row.get("id"), "title": row.get("title"), "summary": (row.get("summary") or "")[:1500],
+                         "action_items": m.action_items or []},
+                    )
+                return row
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.delete("/api/meetings/{meeting_id}")
@@ -1082,7 +1202,7 @@ def delete_meeting(
                     return JSONResponse(status_code=404, content={"error": "Meeting not found or access denied."})
                 return {"deleted": True, "id": meeting_id}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 # --- Chat Sessions API (User & Session-wise History) ---
@@ -1102,7 +1222,7 @@ def get_chat_sessions(user_email: str = "guest@renimai.com", authorization: Opti
                 rows = cur.fetchall()
                 return [serialize_row(r) for r in rows]
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/chat/sessions", status_code=201)
@@ -1147,7 +1267,7 @@ def save_chat_session(session: ChatSessionSave, authorization: Optional[str] = H
                 row = cur.fetchone()
                 return serialize_row(row)
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.delete("/api/chat/sessions/{session_id}")
@@ -1166,19 +1286,24 @@ def delete_chat_session(session_id: str, authorization: Optional[str] = Header(d
                     return JSONResponse(status_code=404, content={"error": "Chat session not found or access denied."})
                 return {"deleted": True, "id": session_id}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 # --- User Auth API (Sign Up & Sign In with Neon PostgreSQL) ---
 
 @app.post("/api/auth/signup", status_code=201)
 def auth_signup(payload: UserSignupRequest, request: Request):
-    ip = request.client.host if request.client else "127.0.0.1"
+    ip = client_ip(request)
     allowed, retry_after = check_rate_limit(f"signup:{ip}", max_requests=10, window_seconds=60)
     if not allowed:
         return JSONResponse(status_code=429, content={"error": "Too many signup attempts. Try again shortly."}, headers={"Retry-After": str(retry_after)})
     email = payload.email.strip().lower()
-    full_name = (payload.full_name or email.split("@")[0]).strip()
+    if "@" not in email or "." not in email.split("@")[-1] or len(email) > 254:
+        return JSONResponse(status_code=400, content={"error": "Enter a valid email address."})
+    pw_error = validate_password_strength(payload.password)
+    if pw_error:
+        return JSONResponse(status_code=400, content={"error": pw_error})
+    full_name = (payload.full_name or email.split("@")[0]).strip()[:120]
     try:
         with db_pool.connection() as conn:
             with conn.cursor() as cur:
@@ -1208,14 +1333,18 @@ def auth_signup(payload: UserSignupRequest, request: Request):
                     "user": user_row,
                 }
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/auth/signin")
 def auth_signin(payload: UserSigninRequest, request: Request):
-    ip = request.client.host if request.client else "127.0.0.1"
+    ip = client_ip(request)
     email = payload.email.strip().lower()
     allowed, retry_after = check_rate_limit(f"signin:{ip}:{email}", max_requests=10, window_seconds=60)
+    acct_ok, _ = check_rate_limit(f"signin-acct:{email}", max_requests=30, window_seconds=900)
+    if not acct_ok:
+        log_audit(email, "auth.account_lockout", "user", email, {"ip": ip}, ip_address=ip)
+        return JSONResponse(status_code=429, content={"error": "Too many failed attempts on this account. Try again in 15 minutes or reset your password."})
     if not allowed:
         log_audit(email, "auth.rate_limited", "user", email, {"ip": ip}, ip_address=ip)
         return JSONResponse(
@@ -1232,20 +1361,16 @@ def auth_signin(payload: UserSigninRequest, request: Request):
                 )
                 row = cur.fetchone()
                 if not row:
-                    return JSONResponse(
-                        status_code=401,
-                        content={"error": "No account found with this email. Please Sign Up first."},
-                    )
+                    return JSONResponse(status_code=401, content={"error": "Invalid email or password."})
                 if row.get("is_active") is False:
                     return JSONResponse(
                         status_code=403,
                         content={"error": "This account has been suspended by Super Admin."},
                     )
-                if row.get("password_hash") and not verify_password(payload.password, row["password_hash"]):
-                    return JSONResponse(
-                        status_code=401,
-                        content={"error": "Invalid password. Please try again."},
-                    )
+                # Accounts without a password hash can never sign in with a password (no passwordless bypass).
+                if not row.get("password_hash") or not verify_password(payload.password, row["password_hash"]):
+                    log_audit(email, "auth.signin_failed", "user", email, {"ip": ip}, ip_address=ip)
+                    return JSONResponse(status_code=401, content={"error": "Invalid email or password."})
                 if row.get("password_hash") and not is_password_hashed(row["password_hash"]):
                     cur.execute(
                         "UPDATE public.app_users SET password_hash = %s WHERE id = %s;",
@@ -1279,7 +1404,7 @@ def auth_signin(payload: UserSigninRequest, request: Request):
                     "user": user_row,
                 }
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.get("/api/auth/2fa/status")
@@ -1294,7 +1419,7 @@ def get_2fa_status(authorization: Optional[str] = Header(default=None)):
                 row = cur.fetchone()
                 return {"totp_enabled": bool(row and row.get("totp_enabled"))}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/auth/2fa/setup")
@@ -1313,7 +1438,7 @@ def setup_2fa(authorization: Optional[str] = Header(default=None)):
                 )
         return {"secret": secret, "otpauth_uri": uri}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/auth/2fa/verify")
@@ -1334,7 +1459,7 @@ def verify_and_enable_2fa(req: TwoFactorCodeRequest, authorization: Optional[str
         log_audit(email, "auth.2fa_enabled", "user", email)
         return {"totp_enabled": True, "message": "Two-factor authentication enabled."}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/auth/2fa/disable")
@@ -1353,7 +1478,7 @@ def disable_2fa(req: TwoFactorCodeRequest, authorization: Optional[str] = Header
         log_audit(email, "auth.2fa_disabled", "user", email)
         return {"totp_enabled": False, "message": "Two-factor authentication disabled."}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.get("/api/auth/sso/check")
@@ -1362,93 +1487,6 @@ def check_sso_domain(email: str):
     domain = clean.split("@")[1] if "@" in clean else ""
     if not domain:
         return {"sso_required": False, "sso_domain": ""}
-
-
-@app.post("/api/auth/forgot-password")
-async def forgot_password(req: ForgotPasswordRequest, request: Request):
-    ip = request.client.host if request.client else "127.0.0.1"
-    allowed, retry_after = check_rate_limit(f"forgot:{ip}", max_requests=5, window_seconds=60)
-    if not allowed:
-        return JSONResponse(status_code=429, content={"error": f"Too many reset requests. Retry in {retry_after}s."})
-    email = req.email.strip().lower()
-    if "@" not in email:
-        return JSONResponse(status_code=400, content={"error": "Valid email required"})
-    try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT id, is_active FROM public.app_users WHERE email = %s;", (email,))
-                user = cur.fetchone()
-        if not user:
-            return {"sent": True, "message": "If an account exists for that email, a reset link/token has been generated."}
-        if user.get("is_active") is False:
-            return JSONResponse(status_code=403, content={"error": "Account is suspended."})
-
-        reset_token = create_password_reset_token(email)
-        resend_key = os.getenv("RESEND_API_KEY", "").strip()
-        if resend_key:
-            app_url = os.getenv("APP_BASE_URL", "http://localhost:3057").rstrip("/")
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                await client.post(
-                    "https://api.resend.com/emails",
-                    headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
-                    json={
-                        "from": "Renim AI Security <onboarding@resend.dev>",
-                        "to": [email],
-                        "subject": "Reset your Renim AI Password",
-                        "html": f"<p>Use this reset token (valid 15 minutes): <code>{reset_token}</code></p><p>Or open <a href='{app_url}/signin?reset_token={reset_token}'>Reset Password</a></p>",
-                    },
-                )
-            log_audit(email, "auth.forgot_password_sent", "user", email, ip_address=ip)
-            return {"sent": True, "message": "Password reset instructions sent to your email."}
-        log_audit(email, "auth.forgot_password_requested", "user", email, ip_address=ip)
-        return {
-            "sent": True,
-            "message": "Verification reset token generated. Enter your new password below.",
-            "reset_token": reset_token,
-        }
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
-
-
-@app.post("/api/auth/reset-password")
-def reset_password(req: ResetPasswordRequest, request: Request):
-    email = verify_password_reset_token(req.token)
-    if not email:
-        return JSONResponse(status_code=400, content={"error": "Invalid or expired password reset token."})
-    if not req.new_password or len(req.new_password) < 6:
-        return JSONResponse(status_code=400, content={"error": "New password must be at least 6 characters."})
-    try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE public.app_users SET password_hash = %s, token_version = COALESCE(token_version, 1) + 1, updated_at = now() WHERE email = %s RETURNING id;",
-                    (hash_password(req.new_password), email),
-                )
-                row = cur.fetchone()
-                if not row:
-                    return JSONResponse(status_code=404, content={"error": "User not found."})
-        log_audit(email, "auth.password_reset", "user", email, ip_address=request.client.host if request.client else "127.0.0.1")
-        return {"success": True, "message": "Password updated successfully. Please sign in."}
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
-
-
-@app.post("/api/auth/logout-all")
-def logout_all_devices(authorization: Optional[str] = Header(default=None)):
-    email = resolve_authenticated_email(authorization)
-    if not email:
-        return JSONResponse(status_code=401, content={"error": "Authentication required."})
-    try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE public.app_users SET token_version = COALESCE(token_version, 1) + 1, updated_at = now() WHERE email = %s;",
-                    (email,),
-                )
-        log_audit(email, "auth.logout_all_devices", "user", email)
-        return {"revoked": True, "message": "All active sessions have been signed out."}
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
     try:
         with db_pool.connection() as conn:
             with conn.cursor() as cur:
@@ -1469,26 +1507,31 @@ def logout_all_devices(authorization: Optional[str] = Header(default=None)):
     return {"sso_required": False, "sso_domain": ""}
 
 
+_GENERIC_RESET_MSG = "If an account exists for that email, password reset instructions have been sent."
+
+
 @app.post("/api/auth/forgot-password")
 async def forgot_password(req: ForgotPasswordRequest, request: Request):
-    ip = request.client.host if request.client else "127.0.0.1"
+    ip = client_ip(request)
     allowed, retry_after = check_rate_limit(f"forgot:{ip}", max_requests=5, window_seconds=60)
     if not allowed:
         return JSONResponse(status_code=429, content={"error": f"Too many reset requests. Retry in {retry_after}s."})
     email = req.email.strip().lower()
     if "@" not in email:
         return JSONResponse(status_code=400, content={"error": "Valid email required"})
+    per_email_ok, _ = check_rate_limit(f"forgot-email:{email}", max_requests=3, window_seconds=900)
+    if not per_email_ok:
+        return {"sent": True, "message": _GENERIC_RESET_MSG}
     try:
         with db_pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT id, is_active FROM public.app_users WHERE email = %s;", (email,))
                 user = cur.fetchone()
-        if not user:
-            return {"sent": True, "message": "If an account exists for that email, a reset link/token has been generated."}
-        if user.get("is_active") is False:
-            return JSONResponse(status_code=403, content={"error": "Account is suspended."})
+        # Same response whether or not the account exists (no account enumeration).
+        if not user or user.get("is_active") is False:
+            return {"sent": True, "message": _GENERIC_RESET_MSG}
 
-        reset_token = create_password_reset_token(email)
+        reset_token = create_password_reset_token(email, get_token_version(email))
         resend_key = os.getenv("RESEND_API_KEY", "").strip()
         if resend_key:
             app_url = os.getenv("APP_BASE_URL", "http://localhost:3057").rstrip("/")
@@ -1497,45 +1540,52 @@ async def forgot_password(req: ForgotPasswordRequest, request: Request):
                     "https://api.resend.com/emails",
                     headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
                     json={
-                        "from": "Renim AI Security <onboarding@resend.dev>",
+                        "from": os.getenv("EMAIL_FROM", "Renim AI Security <onboarding@resend.dev>"),
                         "to": [email],
                         "subject": "Reset your Renim AI Password",
-                        "html": f"<p>Use this reset token (valid 15 minutes): <code>{reset_token}</code></p><p>Or open <a href='{app_url}/signin?reset_token={reset_token}'>Reset Password</a></p>",
+                        "html": f"<p>Use this reset token (valid 15 minutes): <code>{reset_token}</code></p><p>Or open <a href='{app_url}/signin?reset_token={reset_token}'>Reset Password</a></p><p>If you did not request this, you can ignore this email.</p>",
                     },
                 )
             log_audit(email, "auth.forgot_password_sent", "user", email, ip_address=ip)
-            return {"sent": True, "message": "Password reset instructions sent to your email."}
-        log_audit(email, "auth.forgot_password_requested", "user", email, ip_address=ip)
-        return {
-            "sent": True,
-            "message": "Verification reset token generated. Enter your new password below.",
-            "reset_token": reset_token,
-        }
+        elif os.getenv("DEV_RETURN_RESET_TOKEN", "").strip().lower() in ("1", "true", "yes"):
+            # Local development only: never enable in production (it lets anyone reset any password).
+            log_audit(email, "auth.forgot_password_dev_token", "user", email, ip_address=ip)
+            return {"sent": True, "message": "DEV MODE: reset token returned in response.", "reset_token": reset_token}
+        else:
+            print("WARNING: RESEND_API_KEY is not configured; password reset email was not sent.")
+            log_audit(email, "auth.forgot_password_email_unavailable", "user", email, ip_address=ip)
+        return {"sent": True, "message": _GENERIC_RESET_MSG}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/auth/reset-password")
 def reset_password(req: ResetPasswordRequest, request: Request):
+    ip = client_ip(request)
+    allowed, retry_after = check_rate_limit(f"reset:{ip}", max_requests=10, window_seconds=300)
+    if not allowed:
+        return JSONResponse(status_code=429, content={"error": f"Too many attempts. Retry in {retry_after}s."})
     email = verify_password_reset_token(req.token)
     if not email:
         return JSONResponse(status_code=400, content={"error": "Invalid or expired password reset token."})
-    if not req.new_password or len(req.new_password) < 6:
-        return JSONResponse(status_code=400, content={"error": "New password must be at least 6 characters."})
+    pw_error = validate_password_strength(req.new_password)
+    if pw_error:
+        return JSONResponse(status_code=400, content={"error": pw_error})
     try:
         with db_pool.connection() as conn:
             with conn.cursor() as cur:
+                # Bumping token_version signs out all sessions and makes this reset token single-use.
                 cur.execute(
                     "UPDATE public.app_users SET password_hash = %s, token_version = COALESCE(token_version, 1) + 1, updated_at = now() WHERE email = %s RETURNING id;",
                     (hash_password(req.new_password), email),
                 )
                 row = cur.fetchone()
                 if not row:
-                    return JSONResponse(status_code=404, content={"error": "User not found."})
-        log_audit(email, "auth.password_reset", "user", email, ip_address=request.client.host if request.client else "127.0.0.1")
+                    return JSONResponse(status_code=400, content={"error": "Invalid or expired password reset token."})
+        log_audit(email, "auth.password_reset", "user", email, ip_address=ip)
         return {"success": True, "message": "Password updated successfully. Please sign in."}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/auth/logout-all")
@@ -1553,7 +1603,7 @@ def logout_all_devices(authorization: Optional[str] = Header(default=None)):
         log_audit(email, "auth.logout_all_devices", "user", email)
         return {"revoked": True, "message": "All active sessions have been signed out."}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 # ================= 2.5 ADVANCED ENTERPRISE MODULES (DOCS AI, KANBAN, EMAIL, AUDIO) =================
@@ -1626,7 +1676,7 @@ def get_user_documents(
                 rows = cur.fetchall()
                 return [serialize_row(r) for r in rows]
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/documents/upload")
@@ -1703,7 +1753,7 @@ async def upload_document(
                 row = cur.fetchone()
                 return serialize_row(row)
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.delete("/api/documents/{doc_id}")
@@ -1733,7 +1783,7 @@ def delete_document(
                     return JSONResponse(status_code=404, content={"error": "Document not found or access denied"})
                 return {"deleted": True, "id": str(row["id"])}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/documents/{doc_id}/chat")
@@ -1780,7 +1830,7 @@ async def chat_with_document(doc_id: str, payload: DocChatRequest, authorization
                     "filename": filename,
                 }
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/tasks/{task_id}/breakdown")
@@ -1841,7 +1891,7 @@ async def breakdown_task(task_id: str, authorization: Optional[str] = Header(def
                 track_ai_usage(email, "task_breakdown", credits_used=1, org_id=org_id)
                 return serialize_row(updated)
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/ai/draft-email")
@@ -1892,7 +1942,7 @@ async def draft_email(payload: EmailDraftRequest, authorization: Optional[str] =
         except Exception:
             return {"subject": "Renim AI Follow-up Note", "body": raw_res}
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 @app.post("/api/meetings/audio-transcribe")
@@ -1934,7 +1984,7 @@ async def transcribe_meeting_audio(
             "word_count": len(transcript.split()),
         }
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        return JSONResponse(status_code=500, content=server_error(exc))
 
 
 # ================= 3. FRONTEND SERVING (ASTRO / REACT DIST + FALLBACK) =================

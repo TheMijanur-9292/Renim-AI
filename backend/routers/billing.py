@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from db import get_db_pool, log_audit, is_user_active
-from auth_utils import resolve_user_email, resolve_authenticated_email
+from auth_utils import resolve_user_email, resolve_authenticated_email, server_error
 
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
@@ -165,7 +165,35 @@ async def get_billing_status(
                     sub["currency"] = "INR"
                 return {"subscription": sub, "usage_breakdown": breakdown}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
+
+
+def _normalize_cycle(cycle: Optional[str]) -> str:
+    return "yearly" if (cycle or "").strip().lower() == "yearly" else "monthly"
+
+
+def _can_manage_billing(email: str, org_id: Optional[str]) -> bool:
+    """Personal billing is always the user's own; org billing requires admin/owner of that org."""
+    from db import resolve_org_access
+    from auth_utils import has_min_role
+    oid = (org_id or "").strip()
+    if not oid or oid == "personal":
+        return True
+    allowed, role = resolve_org_access(email, oid)
+    return bool(allowed and has_min_role(role, "admin"))
+
+
+def _invoice_exists(provider: str, provider_session_id: str) -> bool:
+    pool = get_db_pool()
+    if not pool or not provider_session_id:
+        return False
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM public.billing_invoices WHERE provider = %s AND provider_session_id = %s LIMIT 1;",
+                (provider, provider_session_id),
+            )
+            return cur.fetchone() is not None
 
 
 def _activate_subscription_plan(
@@ -194,6 +222,8 @@ def _activate_subscription_plan(
                               seats_limit = EXCLUDED.seats_limit,
                               billing_cycle = EXCLUDED.billing_cycle,
                               amount_usd = EXCLUDED.amount_usd,
+                              ai_credits_used = CASE WHEN EXCLUDED.amount_usd > 0 THEN 0 ELSE public.org_subscriptions.ai_credits_used END,
+                              period_start = CASE WHEN EXCLUDED.amount_usd > 0 THEN now() ELSE public.org_subscriptions.period_start END,
                               updated_at = now()
                 RETURNING id::text, org_id, user_email, plan_id, status, ai_credits_limit,
                           ai_credits_used, storage_mb_limit, seats_limit, billing_cycle, amount_usd, updated_at
@@ -211,6 +241,7 @@ def _activate_subscription_plan(
             )
             sub = dict(cur.fetchone() or {})
             sub["currency"] = "INR"
+            sub["amount_inr"] = sub.get("amount_usd")  # column is legacy-named; values are INR
             if amount > 0:
                 cur.execute(
                     """
@@ -246,6 +277,9 @@ async def upgrade_plan(
     plan = next((p for p in SAAS_PLANS if p["id"] == req.plan_id.lower()), None)
     if not plan:
         return JSONResponse(status_code=400, content={"error": "Invalid plan_id"})
+    req.billing_cycle = _normalize_cycle(req.billing_cycle)
+    if not _can_manage_billing(email, req.org_id):
+        return JSONResponse(status_code=403, content={"error": "Only organization admins or owners can change this workspace's plan."})
     amount = plan["price_yearly"] if req.billing_cycle == "yearly" else plan["price_monthly"]
     if amount > 0:
         return JSONResponse(
@@ -269,7 +303,7 @@ async def upgrade_plan(
         )
         return {"subscription": sub, "message": f"Switched to {plan['name']} plan"}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))
 
 
 class RazorpayVerifyRequest(BaseModel):
@@ -296,6 +330,9 @@ async def create_checkout_session(
     plan = next((p for p in SAAS_PLANS if p["id"] == req.plan_id.lower()), None)
     if not plan:
         return JSONResponse(status_code=400, content={"error": "Invalid plan_id"})
+    req.billing_cycle = _normalize_cycle(req.billing_cycle)
+    if not _can_manage_billing(email, req.org_id):
+        return JSONResponse(status_code=403, content={"error": "Only organization admins or owners can change this workspace's plan."})
 
     amount = plan["price_yearly"] if req.billing_cycle == "yearly" else plan["price_monthly"]
     if amount == 0:
@@ -343,7 +380,7 @@ async def create_checkout_session(
                     "billing_cycle": req.billing_cycle,
                 }
         except Exception as e:
-            return JSONResponse(status_code=502, content={"error": f"Razorpay checkout failed: {str(e)}"})
+            return JSONResponse(status_code=502, content={"error": "Razorpay checkout is temporarily unavailable. Please try again."})
 
     # 2. Stripe Checkout (INR)
     if STRIPE_SECRET_KEY:
@@ -375,7 +412,7 @@ async def create_checkout_session(
                     return JSONResponse(status_code=502, content={"error": data.get("error", {}).get("message", "Stripe API error")})
                 return {"mode": "stripe", "checkout_url": data.get("url"), "session_id": data.get("id")}
         except Exception as e:
-            return JSONResponse(status_code=502, content={"error": f"Stripe checkout failed: {str(e)}"})
+            return JSONResponse(status_code=502, content={"error": "Stripe checkout is temporarily unavailable. Please try again."})
 
     # 3. Never allow silent free upgrades when no payment gateway is configured
     return JSONResponse(
@@ -401,20 +438,51 @@ async def verify_razorpay_payment(
     expected = hmac.new(RAZORPAY_KEY_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, req.razorpay_signature):
         return JSONResponse(status_code=400, content={"error": "Invalid Razorpay payment signature."})
-    plan = next((p for p in SAAS_PLANS if p["id"] == req.plan_id.lower()), None)
+
+    # The plan, cycle, org and buyer come from the order we created server-side, never from the client.
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            order_res = await client.get(
+                f"https://api.razorpay.com/v1/orders/{req.razorpay_order_id}",
+                auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET),
+            )
+        if order_res.status_code != 200:
+            return JSONResponse(status_code=502, content={"error": "Could not confirm the order with Razorpay."})
+        order = order_res.json()
+    except Exception as e:
+        print("Razorpay order lookup failed:", e)
+        return JSONResponse(status_code=502, content={"error": "Could not confirm the order with Razorpay."})
+
+    notes = order.get("notes") or {}
+    if (notes.get("user_email") or "").strip().lower() != email:
+        return JSONResponse(status_code=403, content={"error": "This payment belongs to a different account."})
+    plan = next((p for p in SAAS_PLANS if p["id"] == (notes.get("plan_id") or "").lower()), None)
     if not plan:
-        return JSONResponse(status_code=400, content={"error": "Invalid plan_id"})
-    amount = plan["price_yearly"] if req.billing_cycle == "yearly" else plan["price_monthly"]
-    sub, inv_num = _activate_subscription_plan(
-        email=email,
-        org_id=req.org_id or "personal",
-        plan=plan,
-        billing_cycle=req.billing_cycle,
-        amount=amount,
-        provider="razorpay",
-        provider_session_id=req.razorpay_payment_id,
-        ip_address=request.client.host if request.client else "127.0.0.1",
-    )
+        return JSONResponse(status_code=400, content={"error": "Order has no valid plan."})
+    cycle = _normalize_cycle(notes.get("billing_cycle"))
+    org_id = notes.get("org_id") or "personal"
+    amount = plan["price_yearly"] if cycle == "yearly" else plan["price_monthly"]
+    if int(order.get("amount") or 0) != int(amount * 100) or (order.get("currency") or "INR") != "INR":
+        return JSONResponse(status_code=400, content={"error": "Paid amount does not match the plan price."})
+    if order.get("status") not in ("paid", "attempted") and int(order.get("amount_paid") or 0) < int(amount * 100):
+        return JSONResponse(status_code=400, content={"error": "Payment has not been captured yet."})
+    if _invoice_exists("razorpay", req.razorpay_order_id):
+        return JSONResponse(status_code=409, content={"error": "This payment has already been applied."})
+    try:
+        sub, inv_num = _activate_subscription_plan(
+            email=email,
+            org_id=org_id,
+            plan=plan,
+            billing_cycle=cycle,
+            amount=amount,
+            provider="razorpay",
+            provider_session_id=req.razorpay_order_id,
+            ip_address=request.client.host if request.client else "127.0.0.1",
+        )
+    except Exception as e:
+        if "uq_invoices_provider_session" in str(e):
+            return JSONResponse(status_code=409, content={"error": "This payment has already been applied."})
+        return JSONResponse(status_code=500, content=server_error(e))
     return {"verified": True, "subscription": sub, "invoice_number": inv_num, "message": f"Payment verified! Upgraded to {plan['name']} plan."}
 
 
@@ -422,7 +490,10 @@ async def verify_razorpay_payment(
 async def stripe_webhook(request: Request, stripe_signature: Optional[str] = Header(default=None)):
     """Handles Stripe webhook events with HMAC-SHA256 signature verification."""
     raw_body = await request.body()
-    if STRIPE_WEBHOOK_SECRET:
+    if not STRIPE_WEBHOOK_SECRET:
+        # Without a secret we cannot tell real Stripe events from forged ones, so refuse them all.
+        return JSONResponse(status_code=503, content={"error": "Stripe webhook is not configured."})
+    if True:
         if not stripe_signature:
             return JSONResponse(status_code=400, content={"error": "Missing Stripe-Signature header"})
         try:
@@ -441,13 +512,20 @@ async def stripe_webhook(request: Request, stripe_signature: Optional[str] = Hea
         etype = event.get("type", "")
         obj = (event.get("data") or {}).get("object") or {}
         meta = obj.get("metadata") or {}
-        if etype == "checkout.session.completed":
+        if etype == "checkout.session.completed" and obj.get("payment_status") in ("paid", "no_payment_required"):
             email = (meta.get("user_email") or obj.get("customer_email") or "").strip().lower()
-            plan_id = (meta.get("plan_id") or "pro").lower()
+            plan_id = (meta.get("plan_id") or "").lower()
             org_id = meta.get("org_id") or "personal"
-            cycle = meta.get("billing_cycle") or "monthly"
-            plan = next((p for p in SAAS_PLANS if p["id"] == plan_id), SAAS_PLANS[1])
+            cycle = _normalize_cycle(meta.get("billing_cycle"))
+            plan = next((p for p in SAAS_PLANS if p["id"] == plan_id), None)
+            if not plan:
+                return {"received": True, "ignored": "unknown plan"}
             amount = plan["price_yearly"] if cycle == "yearly" else plan["price_monthly"]
+            if int(obj.get("amount_total") or 0) < int(amount * 100):
+                log_audit(email or "unknown", "billing.stripe_amount_mismatch", "subscription", plan["id"], {"session_id": obj.get("id", "")})
+                return {"received": True, "ignored": "amount mismatch"}
+            if _invoice_exists("stripe", obj.get("id", "")):
+                return {"received": True, "duplicate": True}
             pool = get_db_pool()
             if pool and email:
                 inv_num = f"INV-{uuid.uuid4().hex[:8].upper()}"
@@ -461,7 +539,8 @@ async def stripe_webhook(request: Request, stripe_signature: Optional[str] = Hea
                             ON CONFLICT (user_email, org_id)
                             DO UPDATE SET plan_id = EXCLUDED.plan_id, ai_credits_limit = EXCLUDED.ai_credits_limit,
                                           storage_mb_limit = EXCLUDED.storage_mb_limit, seats_limit = EXCLUDED.seats_limit,
-                                          billing_cycle = EXCLUDED.billing_cycle, amount_usd = EXCLUDED.amount_usd, updated_at = now()
+                                          billing_cycle = EXCLUDED.billing_cycle, amount_usd = EXCLUDED.amount_usd,
+                                          ai_credits_used = 0, period_start = now(), updated_at = now()
                             """,
                             (org_id, email, plan["id"], plan["ai_credits_limit"], plan["storage_mb_limit"], plan["seats_limit"], cycle, amount),
                         )
@@ -476,7 +555,7 @@ async def stripe_webhook(request: Request, stripe_signature: Optional[str] = Hea
                 log_audit(email, "billing.stripe_webhook_paid", "subscription", plan["id"], {"session_id": obj.get("id", "")}, org_id=org_id)
         return {"received": True, "type": etype}
     except Exception as e:
-        return JSONResponse(status_code=400, content={"error": str(e)})
+        return JSONResponse(status_code=400, content=server_error(e))
 
 
 @router.get("/invoices")
@@ -509,6 +588,7 @@ async def get_invoices(
                             "plan_id": r["plan_id"],
                             "date": r["created_at"],
                             "amount_usd": float(r["amount_usd"] or 0),
+                            "amount_inr": float(r["amount_usd"] or 0),
                             "cycle": r["billing_cycle"],
                             "provider": r["provider"],
                             "status": r["status"],
@@ -539,4 +619,4 @@ async def get_invoices(
                 ]
                 return {"invoices": invoices}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content=server_error(e))

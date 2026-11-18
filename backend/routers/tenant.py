@@ -12,8 +12,8 @@ from fastapi import APIRouter, Header, Query
 from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel
 
-from db import get_db_pool, log_audit, track_ai_usage, check_ai_credits, is_user_active
-from auth_utils import resolve_user_email, ROLE_HIERARCHY
+from db import get_db_pool, log_audit, track_ai_usage, check_ai_credits, is_user_active, resolve_org_access
+from auth_utils import resolve_user_email, ROLE_HIERARCHY, resolve_llm_target, resolve_authenticated_email
 
 def require_org_role(user_role: str, min_role: str) -> bool:
     return ROLE_HIERARCHY.get((user_role or "").lower(), 0) >= ROLE_HIERARCHY.get(min_role.lower(), 99)
@@ -53,6 +53,7 @@ class ShareCreateReq(BaseModel):
     content: str
     org_id: str = ""
     user_email: Optional[str] = None
+    expires_in_days: Optional[int] = 30
 
 
 class MindMapReq(BaseModel):
@@ -75,9 +76,7 @@ class MeetingFollowupReq(BaseModel):
 
 
 async def _ask_llm(system_prompt: str, user_prompt: str, api_key: Optional[str] = None, model: Optional[str] = None, base_url: Optional[str] = None) -> str:
-    key = api_key or AIM_API_KEY
-    mdl = model or AIM_MODEL
-    base = (base_url or AIM_BASE_URL).rstrip("/")
+    key, mdl, base = resolve_llm_target(api_key, model, base_url, AIM_API_KEY, AIM_MODEL, AIM_BASE_URL)
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
             f"{base}/v1/chat/completions",
@@ -163,7 +162,7 @@ async def accept_org_invite(req: InviteAcceptReq, authorization: Optional[str] =
                 """
                 UPDATE public.org_members
                 SET status = 'active'
-                WHERE org_id = %s::uuid AND user_email = %s
+                WHERE org_id = %s::uuid AND user_email = %s AND status = 'pending'
                 RETURNING id::text, org_id::text, role, status
                 """,
                 (req.org_id, email),
@@ -247,20 +246,42 @@ async def set_resource_visibility(req: VisibilityReq, authorization: Optional[st
 # --- 3. Notion-Style Public Share Links ---
 @router.post("/api/tenant/share", status_code=201)
 async def create_public_share_link(req: ShareCreateReq, authorization: Optional[str] = Header(default=None)):
-    email = resolve_user_email(authorization, req.user_email)
+    email = resolve_authenticated_email(authorization)
+    if not email:
+        return JSONResponse(status_code=401, content={"error": "Sign in to create public links."})
     pool = get_db_pool()
     if not pool:
         return JSONResponse(status_code=503, content={"error": "Database unavailable"})
-    token = secrets.token_urlsafe(12)
+    table = {"note": "notes", "meeting": "meetings", "task": "tasks"}.get(req.resource_type)
+    if not table:
+        return JSONResponse(status_code=400, content={"error": "Invalid resource_type"})
+    if len(req.content or "") > 500_000:
+        return JSONResponse(status_code=413, content={"error": "Content is too large to share."})
+    days = req.expires_in_days if req.expires_in_days is not None else 30
+    days = max(0, min(int(days), 365))  # 0 = never expires
+    token = secrets.token_urlsafe(24)
     with pool.connection() as conn:
         with conn.cursor() as cur:
+            # Only the resource's author (or a member of the org it belongs to) may publish it.
+            cur.execute(
+                f"SELECT user_email, org_id FROM public.{table} WHERE id::text = %s",
+                (req.resource_id,),
+            )
+            res = cur.fetchone()
+            if not res:
+                return JSONResponse(status_code=404, content={"error": "Resource not found."})
+            owns = (res.get("user_email") or "").lower() == email
+            res_org = res.get("org_id") or ""
+            if not owns and not (res_org not in ("", "personal") and resolve_org_access(email, res_org)[0]):
+                return JSONResponse(status_code=403, content={"error": "You can only share your own or your team's items."})
             cur.execute(
                 """
-                INSERT INTO public.shared_links (token, resource_type, resource_id, org_id, owner_email, title, content)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING token, resource_type, title, created_at
+                INSERT INTO public.shared_links (token, resource_type, resource_id, org_id, owner_email, title, content, expires_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, CASE WHEN %s > 0 THEN now() + make_interval(days => %s) ELSE NULL END)
+                RETURNING token, resource_type, title, created_at, expires_at
                 """,
-                (token, req.resource_type, req.resource_id, req.org_id, email, req.title or "Shared Document", req.content or ""),
+                (token, req.resource_type, req.resource_id, res_org, email, (req.title or "Shared Document")[:300],
+                 req.content or "", days, days),
             )
             row = cur.fetchone()
     log_audit(email, "share.link_created", req.resource_type, req.resource_id, {"token": token}, org_id=req.org_id)
@@ -275,7 +296,10 @@ async def get_public_share_json(token: str):
     with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT token, resource_type, title, content, owner_email, views, created_at FROM public.shared_links WHERE token = %s",
+                """
+                SELECT token, resource_type, title, content, views, created_at FROM public.shared_links
+                WHERE token = %s AND revoked = false AND (expires_at IS NULL OR expires_at > now())
+                """,
                 (token,),
             )
             row = cur.fetchone()
@@ -292,7 +316,7 @@ async def view_public_share_page(token: str):
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE public.shared_links SET views = views + 1 WHERE token = %s RETURNING token, resource_type, title, content, owner_email, views, created_at",
+                    "UPDATE public.shared_links SET views = views + 1 WHERE token = %s AND revoked = false AND (expires_at IS NULL OR expires_at > now()) RETURNING token, resource_type, title, content, views, created_at",
                     (token,),
                 )
                 row = cur.fetchone()
@@ -324,7 +348,7 @@ async def view_public_share_page(token: str):
   <div class="wrap">
     <span class="badge">Renim AI · Public {row["resource_type"]}</span>
     <h1>{safe_title}</h1>
-    <div class="meta">Shared by {row["owner_email"]} · {row["views"]} views</div>
+    <div class="meta">Shared via Renim AI · {row["views"]} views</div>
     <pre>{safe_content}</pre>
     <div class="footer">
       <span>Powered by Renim AI Enterprise Workspace</span>
@@ -398,3 +422,43 @@ async def generate_meeting_followup(req: MeetingFollowupReq, authorization: Opti
         pass
     track_ai_usage(email, "meeting_followup", credits_used=1, tokens_est=450)
     return result
+
+
+@router.get("/api/tenant/shares")
+async def list_my_share_links(authorization: Optional[str] = Header(default=None)):
+    email = resolve_authenticated_email(authorization)
+    if not email:
+        return JSONResponse(status_code=401, content={"error": "Authentication required."})
+    pool = get_db_pool()
+    if not pool:
+        return {"shares": []}
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT token, resource_type, resource_id, title, views, created_at, expires_at, revoked
+                FROM public.shared_links WHERE owner_email = %s ORDER BY created_at DESC LIMIT 200
+                """,
+                (email,),
+            )
+            return {"shares": cur.fetchall()}
+
+
+@router.delete("/api/tenant/share/{token}")
+async def revoke_share_link(token: str, authorization: Optional[str] = Header(default=None)):
+    email = resolve_authenticated_email(authorization)
+    if not email:
+        return JSONResponse(status_code=401, content={"error": "Authentication required."})
+    pool = get_db_pool()
+    if not pool:
+        return JSONResponse(status_code=503, content={"error": "Database unavailable"})
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE public.shared_links SET revoked = true WHERE token = %s AND owner_email = %s RETURNING token",
+                (token, email),
+            )
+            if not cur.fetchone():
+                return JSONResponse(status_code=404, content={"error": "Share link not found."})
+    log_audit(email, "share.link_revoked", "share", token)
+    return {"revoked": True}

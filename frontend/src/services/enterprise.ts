@@ -102,6 +102,10 @@ function getHeaders(): Record<string, string> {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  try {
+    const orgId = sessionStorage.getItem('renim_active_org_id');
+    if (orgId && orgId !== 'personal') headers['X-Org-Id'] = orgId;
+  } catch {}
   return headers;
 }
 
