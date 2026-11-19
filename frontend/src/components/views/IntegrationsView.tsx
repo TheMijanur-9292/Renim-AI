@@ -9,8 +9,17 @@ import {
   fetchApiKeys,
   createApiKey,
   revokeApiKey,
+  fetchCalendarProviders,
+  getCalendarConnectUrl,
+  syncCalendarProvider,
+  disconnectCalendarProvider,
+  consumeCalendarOAuthResult,
+  describeCalendarOAuthResult,
+  CALENDAR_PROVIDER_LABELS,
   type IntegrationConfig,
-  type ApiKeyItem
+  type ApiKeyItem,
+  type CalendarProviderStatus,
+  type CalendarProviderId
 } from '../../services/enterprise';
 import { Icon, IconTile, PageContainer, PageHeader, SectionCard, EmptyState, riseSx } from '../ui';
 import type { Accent } from '../../theme/renimTheme';
@@ -28,6 +37,13 @@ const PROVIDERS = [
   { id: 'webhook', name: 'Custom webhook', icon: 'webhook', desc: 'A webhook is a web address we notify whenever something happens in your workspace.' }
 ];
 
+const CALENDAR_META: Record<CalendarProviderId, { icon: string; accent: Accent; desc: string }> = {
+  google: { icon: 'calendar_month', accent: 'cyan', desc: 'Show events from your Google Calendar alongside your workspace calendar.' },
+  microsoft: { icon: 'event_note', accent: 'indigo', desc: 'Show events from your Outlook or Microsoft 365 calendar alongside your workspace calendar.' },
+};
+
+const formatSynced = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : 'Never');
+
 const PROVIDER_ACCENT: Record<string, Accent> = {
   slack: 'violet', teams: 'indigo', jira: 'cyan', github: 'slate', webhook: 'amber'
 };
@@ -37,6 +53,60 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ userEmail, s
   const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
   const [newKeyName, setNewKeyName] = useState('');
   const [newlyCreatedSecret, setNewlyCreatedSecret] = useState<string | null>(null);
+  const [calendars, setCalendars] = useState<CalendarProviderStatus[]>([]);
+  const [calendarBusy, setCalendarBusy] = useState<string | null>(null);
+  const [calendarNotice, setCalendarNotice] = useState(() => describeCalendarOAuthResult(consumeCalendarOAuthResult()));
+
+  const loadCalendars = async () => {
+    try {
+      const res = await fetchCalendarProviders();
+      setCalendars(res.providers);
+    } catch {
+      setCalendars([]);
+    }
+  };
+
+  useEffect(() => {
+    loadCalendars();
+  }, [userEmail]);
+
+  const handleCalendarConnect = async (provider: CalendarProviderId) => {
+    setCalendarBusy(provider);
+    try {
+      const res = await getCalendarConnectUrl(provider);
+      window.location.assign(res.authorization_url);
+    } catch (e: any) {
+      showToast(e.message || 'Could not start the connection');
+      setCalendarBusy(null);
+    }
+  };
+
+  const handleCalendarSync = async (provider: CalendarProviderId) => {
+    setCalendarBusy(provider);
+    try {
+      const res = await syncCalendarProvider(provider);
+      showToast(`Synced ${res.synced} ${res.synced === 1 ? 'event' : 'events'} from ${CALENDAR_PROVIDER_LABELS[provider]}`);
+      await loadCalendars();
+    } catch (e: any) {
+      showToast(e.message || 'Sync failed');
+    } finally {
+      setCalendarBusy(null);
+    }
+  };
+
+  const handleCalendarDisconnect = async (provider: CalendarProviderId) => {
+    if (!window.confirm(`Disconnect ${CALENDAR_PROVIDER_LABELS[provider]}? Synced events will be removed.`)) return;
+    setCalendarBusy(provider);
+    try {
+      await disconnectCalendarProvider(provider);
+      showToast(`${CALENDAR_PROVIDER_LABELS[provider]} disconnected`);
+      await loadCalendars();
+    } catch (e: any) {
+      showToast(e.message || 'Could not disconnect');
+    } finally {
+      setCalendarBusy(null);
+    }
+  };
 
   const loadAll = async () => {
     try {
@@ -197,6 +267,66 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ userEmail, s
             );
           })}
         </Box>
+
+        <SectionCard
+          index={6}
+          icon="event"
+          accent="cyan"
+          title="Calendars"
+          subtitle="Bring events from your existing calendars into Renim AI. Access is read-only."
+          sx={{ mb: 3 }}
+        >
+          {calendarNotice && (
+            <Alert severity={calendarNotice.severity} onClose={() => setCalendarNotice(null)} sx={{ mb: 2, borderRadius: 3 }}>
+              {calendarNotice.message}
+            </Alert>
+          )}
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
+            {(['google', 'microsoft'] as CalendarProviderId[]).map((id) => {
+              const st = calendars.find((c) => c.provider === id);
+              const meta = CALENDAR_META[id];
+              const busy = calendarBusy === id;
+              return (
+                <Card key={id} sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2, borderColor: st?.connected ? 'secondary.main' : 'divider' }}>
+                  <Stack direction="row" alignItems="flex-start" spacing={1.5}>
+                    <IconTile icon={meta.icon} accent={meta.accent} size={44} />
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 700 }}>{CALENDAR_PROVIDER_LABELS[id]}</Typography>
+                      <Typography variant="body2" color="text.secondary">{meta.desc}</Typography>
+                    </Box>
+                    {st?.connected && <Chip size="small" color="secondary" label="Connected" sx={{ flex: 'none' }} />}
+                  </Stack>
+                  {!st?.configured ? (
+                    <Alert severity="info" icon={<Icon name="info" size={20} />} sx={{ borderRadius: 3 }}>
+                      Not configured yet — ask your admin.
+                    </Alert>
+                  ) : st.connected ? (
+                    <>
+                      <Stack spacing={0.25}>
+                        {st.account_email && (
+                          <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{st.account_email}</Typography>
+                        )}
+                        <Typography variant="caption" color="text.secondary">Last synced: {formatSynced(st.last_synced_at)}</Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={1} sx={{ mt: 'auto' }}>
+                        <Button variant="contained" color="primary" disabled={busy} onClick={() => handleCalendarSync(id)} startIcon={<Icon name="sync" size={18} />} sx={{ minHeight: 44, flex: 1 }}>
+                          Sync now
+                        </Button>
+                        <Button variant="outlined" color="inherit" disabled={busy} onClick={() => handleCalendarDisconnect(id)} startIcon={<Icon name="link_off" size={18} />} sx={{ minHeight: 44, flex: 1 }}>
+                          Disconnect
+                        </Button>
+                      </Stack>
+                    </>
+                  ) : (
+                    <Button variant="contained" color="primary" disabled={busy} onClick={() => handleCalendarConnect(id)} startIcon={<Icon name="link" size={18} />} sx={{ minHeight: 44, mt: 'auto' }}>
+                      Connect
+                    </Button>
+                  )}
+                </Card>
+              );
+            })}
+          </Box>
+        </SectionCard>
 
         <SectionCard
           index={7}

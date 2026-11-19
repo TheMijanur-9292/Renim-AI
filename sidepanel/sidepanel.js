@@ -80,6 +80,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     inputAiUrl: document.getElementById('input-ai-url'),
     inputAiKey: document.getElementById('input-ai-key'),
     inputAiModel: document.getElementById('input-ai-model'),
+    inputAiLang: document.getElementById('input-ai-lang'),
     btnSaveSettings: document.getElementById('btn-save-settings'),
 
     // Auth Modal
@@ -114,6 +115,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.inputAiUrl.value = aiGateway.gatewayUrl || '';
     el.inputAiKey.value = aiGateway.apiKey || '';
     el.inputAiModel.value = aiGateway.model || 'gpt-4o-mini';
+    if (el.inputAiLang) {
+      chrome.storage.local.get(['aiResponseLang']).then(({ aiResponseLang }) => {
+        el.inputAiLang.value = ['en', 'bn', 'hi'].includes(aiResponseLang) ? aiResponseLang : 'en';
+      }).catch(() => {});
+      el.inputAiLang.onchange = () => chrome.storage.local.set({ aiResponseLang: el.inputAiLang.value }).catch(() => {});
+    }
   }
 
   // --- Navigation Tabs ---
@@ -606,6 +613,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       await supabase.setConfig(sbUrl, sbAnon);
       await aiGateway.setConfig(aiUrl, aiKey, aiModel);
+      if (el.inputAiLang) await chrome.storage.local.set({ aiResponseLang: el.inputAiLang.value || 'en' });
 
       showBanner('Configuration saved successfully!');
       updateAuthUI();

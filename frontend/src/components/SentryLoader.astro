@@ -1,0 +1,21 @@
+---
+/**
+ * Optional Sentry browser error monitoring.
+ * Renders nothing unless PUBLIC_SENTRY_DSN is set at build time.
+ */
+const dsn = (import.meta.env.PUBLIC_SENTRY_DSN || '').trim();
+const environment = (import.meta.env.PUBLIC_APP_ENV || import.meta.env.MODE || 'production').trim();
+const SENTRY_VERSION = '8.55.0';
+---
+{dsn && (
+  <>
+    <script is:inline src={`https://browser.sentry-cdn.com/${SENTRY_VERSION}/bundle.min.js`} crossorigin="anonymous" defer></script>
+    <script is:inline define:vars={{ dsn, environment }}>
+      window.addEventListener('DOMContentLoaded', function () {
+        if (window.Sentry && window.Sentry.init) {
+          window.Sentry.init({ dsn: dsn, environment: environment, sendDefaultPii: false, tracesSampleRate: 0 });
+        }
+      });
+    </script>
+  </>
+)}

@@ -46,6 +46,8 @@ interface HeaderProps {
   userName?: string;
   userAvatarUrl?: string;
   onOpenProfile?: () => void;
+  /** Inbox bell + panel. When given it replaces the plain alerts toggle (the toggle lives inside the panel). */
+  notificationCenter?: React.ReactNode;
 }
 
 const isImg = (u: string) => u.startsWith('http') || u.startsWith('data:image');
@@ -70,7 +72,8 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleMobileMenu,
   userName = 'User',
   userAvatarUrl = '',
-  onOpenProfile
+  onOpenProfile,
+  notificationCenter
 }) => {
   const [orgAnchor, setOrgAnchor] = React.useState<null | HTMLElement>(null);
   const activeOrg = orgs.find((o) => o.id === activeOrgId);
@@ -178,13 +181,15 @@ export const Header: React.FC<HeaderProps> = ({
             <IconButton onClick={onOpenFocusModal} aria-label="Open focus timer" id="btn-header-deep-work" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}><Icon name="timer" /></IconButton>
           </Tooltip>
         )}
-        <Tooltip title={isPushEnabled ? 'Notifications on — click to turn off' : 'Turn on notifications'}>
-          <IconButton onClick={onTogglePushNotifications} aria-label="Toggle notifications">
-            <Badge variant="dot" color="secondary" invisible={!isPushEnabled}>
-              <Icon name={isPushEnabled ? 'notifications_active' : 'notifications_off'} />
-            </Badge>
-          </IconButton>
-        </Tooltip>
+        {notificationCenter ?? (
+          <Tooltip title={isPushEnabled ? 'Notifications on — click to turn off' : 'Turn on notifications'}>
+            <IconButton onClick={onTogglePushNotifications} aria-label="Toggle notifications">
+              <Badge variant="dot" color="secondary" invisible={!isPushEnabled}>
+                <Icon name={isPushEnabled ? 'notifications_active' : 'notifications_off'} />
+              </Badge>
+            </IconButton>
+          </Tooltip>
+        )}
         <Tooltip title={themeMode === 'dark' ? 'Light mode' : 'Dark mode'}>
           <IconButton onClick={toggleThemeMode} aria-label="Toggle theme" id="btn-theme-toggle"><Icon name={themeMode === 'dark' ? 'light_mode' : 'dark_mode'} /></IconButton>
         </Tooltip>

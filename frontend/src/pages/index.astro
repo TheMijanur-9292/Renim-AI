@@ -1,4 +1,5 @@
 ---
+import SentryLoader from '../components/SentryLoader.astro';
 /**
  * Renim AI — Product Homepage (redesign)
  * Fully responsive: phone (<640), tablet (640–1024), laptop/desktop (>1024).
@@ -328,6 +329,7 @@ const bars = (n: number) => Array.from({ length: n });
       .node,.node div{width:48px;height:48px}.node{margin:-24px 0 0 -24px}
     }
   </style>
+  <SentryLoader />
 </head>
 <body>
 
@@ -763,7 +765,7 @@ const bars = (n: number) => Array.from({ length: n });
       <div class="foot-cols">
         <div><strong style="font-size:13px;letter-spacing:.06em">PRODUCT</strong><a href="#features">Features</a><a href="#demo">Live Demo</a><a href="#pricing">Pricing</a><a href="/app">Workspace Web App</a></div>
         <div><strong style="font-size:13px;letter-spacing:.06em">MODULES</strong><a href="/app">Daily Briefing</a><a href="/app">Meetings Hub</a><a href="/app">Smart Notes</a><a href="/app">Calendar &amp; Alerts</a></div>
-        <div><strong style="font-size:13px;letter-spacing:.06em">SECURITY</strong><a href="#security">Row Level Security</a><a href="#faq">AI Gateway</a><a href="#faq">Privacy Policy</a><a href="#faq">Terms of Service</a></div>
+        <div><strong style="font-size:13px;letter-spacing:.06em">SECURITY</strong><a href="#security">Row Level Security</a><a href="#faq">AI Gateway</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a></div>
       </div>
     </div>
     <div class="foot-bot">

@@ -305,3 +305,150 @@ export const saveSecuritySettings = (payload: SecuritySettings & { user_email: s
     method: 'PUT',
     body: JSON.stringify(payload),
   });
+
+// --- External calendar sync (Google / Microsoft, read-only) ---
+export type CalendarProviderId = 'google' | 'microsoft';
+
+export interface CalendarProviderStatus {
+  provider: CalendarProviderId;
+  configured: boolean;
+  connected: boolean;
+  account_email: string;
+  connected_at: string | null;
+  last_synced_at: string | null;
+}
+
+export interface ExternalCalendarEvent {
+  provider: CalendarProviderId;
+  external_id: string;
+  title: string;
+  description: string;
+  location: string;
+  start_at: string;
+  end_at: string | null;
+  all_day: boolean;
+  html_link: string;
+}
+
+export const fetchCalendarProviders = () =>
+  apiJson<{ providers: CalendarProviderStatus[] }>('/api/calendar-sync/providers');
+
+export const getCalendarConnectUrl = (provider: CalendarProviderId) =>
+  apiJson<{ authorization_url: string }>(`/api/calendar-sync/${provider}/connect`);
+
+export const syncCalendarProvider = (provider: CalendarProviderId) =>
+  apiJson<{ provider: string; synced: number; last_synced_at: string }>(`/api/calendar-sync/${provider}/sync`, { method: 'POST' });
+
+export const disconnectCalendarProvider = (provider: CalendarProviderId) =>
+  apiJson<{ disconnected: boolean }>(`/api/calendar-sync/${provider}`, { method: 'DELETE' });
+
+export const fetchExternalCalendarEvents = (from?: string, to?: string) => {
+  const qs = new URLSearchParams();
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  const q = qs.toString();
+  return apiJson<{ events: ExternalCalendarEvent[] }>(`/api/calendar-sync/events${q ? `?${q}` : ''}`);
+};
+
+let calendarOAuthResult: { connected?: string; error?: string } | null = null;
+
+/** Reads and strips ?calendar_connected / ?calendar_error from the URL. The result is cached so every view can show it. */
+export function consumeCalendarOAuthResult(): { connected?: string; error?: string } | null {
+  if (typeof window === 'undefined') return null;
+  const url = new URL(window.location.href);
+  const connected = url.searchParams.get('calendar_connected') || undefined;
+  const error = url.searchParams.get('calendar_error') || undefined;
+  if (!connected && !error) return calendarOAuthResult;
+  calendarOAuthResult = { connected, error };
+  url.searchParams.delete('calendar_connected');
+  url.searchParams.delete('calendar_error');
+  window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  return calendarOAuthResult;
+}
+
+export function describeCalendarOAuthResult(r: { connected?: string; error?: string } | null): { severity: 'success' | 'error'; message: string } | null {
+  if (!r) return null;
+  if (r.connected) {
+    const label = CALENDAR_PROVIDER_LABELS[r.connected as CalendarProviderId] || 'Calendar';
+    return { severity: 'success', message: `${label} connected. Your events will appear on the calendar after syncing.` };
+  }
+  return { severity: 'error', message: CALENDAR_ERROR_MESSAGES[r.error || ''] || 'Could not connect the calendar.' };
+}
+
+export const CALENDAR_PROVIDER_LABELS: Record<CalendarProviderId, string> = {
+  google: 'Google Calendar',
+  microsoft: 'Outlook Calendar',
+};
+
+export const CALENDAR_ERROR_MESSAGES: Record<string, string> = {
+  access_denied: 'Calendar access was declined.',
+  invalid_state: 'The connection link expired. Please try again.',
+  exchange_failed: 'Could not finish connecting the calendar. Please try again.',
+  not_configured: 'This calendar provider is not configured yet.',
+  missing_code: 'The calendar provider did not return an authorization code.',
+  provider_error: 'The calendar provider reported an error.',
+};
+
+// --- Smart search status, notes import, note version checks ---
+
+export interface RagStatus {
+  semantic_enabled: boolean;
+  storage: 'vector' | 'array' | 'none';
+  model: string | null;
+  indexed_chunks: number;
+}
+
+export const fetchRagStatus = () => apiJson<RagStatus>('/api/rag/status');
+
+export const rebuildRagIndex = () =>
+  apiJson<{ started: boolean; reason?: string }>('/api/rag/reindex', { method: 'POST', body: '{}' });
+
+export interface NotesImportResult {
+  imported: number;
+  skipped: number;
+  notes: any[];
+}
+
+/** Uploads an export file (.md, .txt, .html, .zip, .enex) and reports upload progress (0-100). */
+export function importNotesFile(file: File, onProgress?: (pct: number) => void): Promise<NotesImportResult> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/import/notes');
+    const headers = getHeaders();
+    delete headers['Content-Type'];
+    Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      let data: any = {};
+      try { data = JSON.parse(xhr.responseText || '{}'); } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data as NotesImportResult);
+      else reject(new Error(data.error || data.detail || `Import failed (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error('Network error while uploading.'));
+    const form = new FormData();
+    form.append('file', file);
+    xhr.send(form);
+  });
+}
+
+export type NoteVersionCheck =
+  | { status: 'ok'; note: any }
+  | { status: 'conflict'; note: any }
+  | { status: 'unavailable' };
+
+/** Asks the server whether a note still has the given updated_at. Never writes anything. */
+export async function checkNoteVersion(noteId: string, expectedUpdatedAt: string): Promise<NoteVersionCheck> {
+  try {
+    const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ expected_updated_at: expectedUpdatedAt }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 409 && data?.note) return { status: 'conflict', note: data.note };
+    if (res.ok && data?.id) return { status: 'ok', note: data };
+  } catch {}
+  return { status: 'unavailable' };
+}

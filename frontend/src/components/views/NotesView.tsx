@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
-import { Box, Button, ButtonBase, Card, Collapse, Divider, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Alert, Box, Button, ButtonBase, Card, Collapse, Dialog, DialogActions, DialogContent, DialogTitle, Divider,
+  IconButton, LinearProgress, Stack, Tooltip, Typography,
+} from '@mui/material';
 import { SMART_NOTE_TEMPLATES } from '../../services/powerups';
+import { checkNoteVersion, importNotesFile, type NotesImportResult } from '../../services/enterprise';
 import { EmptyState, Icon, PageContainer, riseSx } from '../ui';
 
 export interface NotesViewProps {
@@ -42,7 +46,153 @@ export interface NotesViewProps {
   onPublicShareNote?: () => void;
   onToggleTeamVisibility?: () => void;
   hasActiveOrg?: boolean;
+  /** Reloads the note list (used after importing notes or loading the latest version). */
+  onNotesChanged?: () => void;
 }
+
+const IMPORT_ACCEPT = '.md,.markdown,.txt,.html,.htm,.zip,.enex';
+const IMPORT_FORMATS: { icon: string; label: string; hint: string }[] = [
+  { icon: 'description', label: 'Markdown or text', hint: '.md, .txt' },
+  { icon: 'folder_zip', label: 'Notion export', hint: '.zip (Markdown or HTML)' },
+  { icon: 'html', label: 'Google Docs or web page', hint: '.html (File > Download > Web page)' },
+  { icon: 'note_stack', label: 'Evernote export', hint: '.enex' },
+];
+
+/** Dialog for importing notes from export files of other tools. */
+const ImportNotesDialog: React.FC<{ open: boolean; onClose: () => void; onImported: (r: NotesImportResult) => void }> = ({
+  open, onClose, onImported,
+}) => {
+  const [file, setFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [result, setResult] = useState<NotesImportResult | null>(null);
+  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => { setFile(null); setBusy(false); setProgress(0); setResult(null); setError(''); };
+  const close = () => { if (busy) return; reset(); onClose(); };
+
+  const pick = (f: File | null | undefined) => {
+    if (!f) return;
+    setResult(null);
+    setError('');
+    if (f.size > 15 * 1024 * 1024) { setFile(null); setError('This file is larger than 15 MB.'); return; }
+    if (!/\.(md|markdown|txt|html?|zip|enex)$/i.test(f.name)) { setFile(null); setError('This file type is not supported.'); return; }
+    setFile(f);
+  };
+
+  const start = async () => {
+    if (!file) return;
+    setBusy(true);
+    setError('');
+    setProgress(0);
+    try {
+      const r = await importNotesFile(file, setProgress);
+      setResult(r);
+      setFile(null);
+      onImported(r);
+    } catch (e: any) {
+      setError(e?.message || 'Import failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={close} fullWidth maxWidth="sm" aria-labelledby="import-notes-title">
+      <DialogTitle id="import-notes-title" sx={{ pb: 0.5 }}>Import notes</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Bring in notes exported from other apps. Each page or note becomes a new note tagged "imported".
+        </Typography>
+        <Box
+          role="button"
+          tabIndex={0}
+          aria-label="Choose a file to import, or drop it here"
+          onClick={() => !busy && inputRef.current?.click()}
+          onKeyDown={(e: React.KeyboardEvent) => {
+            if ((e.key === 'Enter' || e.key === ' ') && !busy) { e.preventDefault(); inputRef.current?.click(); }
+          }}
+          onDragOver={(e: React.DragEvent) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e: React.DragEvent) => { e.preventDefault(); setDragOver(false); if (!busy) pick(e.dataTransfer.files?.[0]); }}
+          sx={{
+            p: { xs: 2.5, sm: 3.5 }, borderRadius: '16px', border: '2px dashed', textAlign: 'center', cursor: busy ? 'default' : 'pointer',
+            borderColor: dragOver ? 'secondary.main' : 'divider',
+            bgcolor: dragOver ? 'action.selected' : 'action.hover',
+            transition: 'border-color .2s ease, background-color .2s ease, transform .2s ease',
+            transform: dragOver ? 'scale(1.01)' : 'none',
+            '&:focus-visible': { outline: '2px solid', outlineColor: 'secondary.main' },
+            '@media (prefers-reduced-motion: reduce)': { transition: 'none', transform: 'none' },
+          }}
+        >
+          <Icon name="upload_file" size={34} sx={{ color: 'secondary.main' }} />
+          <Typography variant="subtitle2" sx={{ mt: 1, overflowWrap: 'anywhere' }}>
+            {file ? file.name : 'Drop a file here or click to choose'}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {file ? `${Math.max(1, Math.round(file.size / 1024))} KB` : 'Up to 15 MB'}
+          </Typography>
+          <input
+            ref={inputRef}
+            type="file"
+            hidden
+            accept={IMPORT_ACCEPT}
+            onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ''; }}
+          />
+        </Box>
+
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1, mt: 2 }}>
+          {IMPORT_FORMATS.map((f) => (
+            <Stack key={f.label} direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+              <Icon name={f.icon} size={18} sx={{ color: 'text.secondary', flex: 'none' }} />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>{f.label}</Typography>
+                <Typography variant="caption" color="text.secondary">{f.hint}</Typography>
+              </Box>
+            </Stack>
+          ))}
+        </Box>
+
+        {busy && (
+          <Box sx={{ mt: 2 }}>
+            <LinearProgress
+              color="secondary"
+              variant={progress < 100 ? 'determinate' : 'indeterminate'}
+              value={progress}
+              sx={{ height: 6, borderRadius: 3 }}
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+              {progress < 100 ? `Uploading ${progress}%` : 'Creating notes...'}
+            </Typography>
+          </Box>
+        )}
+        {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+        {result && (
+          <Alert severity={result.imported > 0 ? 'success' : 'warning'} sx={{ mt: 2 }}>
+            {result.imported > 0
+              ? `Imported ${result.imported} note${result.imported === 1 ? '' : 's'}.`
+              : 'No notes were found in this file.'}
+            {result.skipped > 0 ? ` ${result.skipped} item${result.skipped === 1 ? ' was' : 's were'} skipped.` : ''}
+          </Alert>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={close} disabled={busy}>{result ? 'Done' : 'Cancel'}</Button>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={start}
+          disabled={!file || busy}
+          startIcon={<Icon name="file_upload" size={18} />}
+        >
+          Import
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
 
 /** Compact toolbar icon button with tooltip + aria-label. */
 const ToolBtn: React.FC<{ label: string; icon: string; onClick: () => void; active?: boolean; danger?: boolean; className?: string }> = ({
@@ -170,8 +320,157 @@ export const NotesView: React.FC<NotesViewProps> = ({
   onPublicShareNote,
   onToggleTeamVisibility,
   hasActiveOrg,
+  onNotesChanged,
 }) => {
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+
+  // --- Safe concurrent editing ---
+  // baseline: the server's updated_at for the version this editor is based on.
+  // seen*: titles/contents this editor has held, so our own saves are never mistaken for someone else's.
+  const baselineRef = useRef<{ id: string | null; updatedAt: string | null }>({ id: null, updatedAt: null });
+  const seenContentRef = useRef<string[]>([]);
+  const seenTitleRef = useRef<string[]>([]);
+  const [conflict, setConflict] = useState<{ note: any; kind: 'save' | 'remote' } | null>(null);
+  const conflictRef = useRef(conflict);
+  conflictRef.current = conflict;
+  const [localStatus, setLocalStatus] = useState<string | null>(null);
+
+  const remember = (list: React.MutableRefObject<string[]>, v: string) => {
+    if (typeof v !== 'string' || list.current[list.current.length - 1] === v) return;
+    list.current.push(v);
+    if (list.current.length > 80) list.current.shift();
+  };
+  const rememberTitle = (t: string) => {
+    remember(seenTitleRef, t);
+    remember(seenTitleRef, t.trim() || 'Untitled Note');
+  };
+  const isOwnVersion = (n: any) =>
+    !!n && seenContentRef.current.includes(n.content || '') && seenTitleRef.current.includes(n.title || '');
+  const adopt = (n: any) => {
+    if (n?.updated_at && n.id === baselineRef.current.id) baselineRef.current.updatedAt = String(n.updated_at);
+  };
+
+  // Another note opened: reset the baseline.
+  useEffect(() => {
+    const n = filteredNotes.find((x) => x.id === activeNoteId);
+    baselineRef.current = { id: activeNoteId, updatedAt: n?.updated_at ? String(n.updated_at) : null };
+    seenContentRef.current = [];
+    seenTitleRef.current = [];
+    if (n) {
+      remember(seenContentRef, n.content || '');
+      rememberTitle(n.title || '');
+    }
+    if (noteEditorRef.current) remember(seenContentRef, noteEditorRef.current.innerHTML);
+    setConflict(null);
+    setLocalStatus(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeNoteId]);
+
+  useEffect(() => {
+    rememberTitle(noteTitle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteTitle]);
+
+  // Record every editor state (typing, toolbar, paste and AI actions all change the editor).
+  useEffect(() => {
+    const el = noteEditorRef.current;
+    if (!el || typeof MutationObserver === 'undefined') return;
+    remember(seenContentRef, el.innerHTML);
+    const obs = new MutationObserver(() => remember(seenContentRef, el.innerHTML));
+    obs.observe(el, { childList: true, subtree: true, characterData: true, attributes: true });
+    return () => obs.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteEditorRef]);
+
+  // When the list reloads, accept our own saves and flag anyone else's.
+  useEffect(() => {
+    const n = filteredNotes.find((x) => x.id === activeNoteId);
+    const base = baselineRef.current;
+    if (!n || !n.updated_at || base.id !== activeNoteId) return;
+    if (!base.updatedAt) {
+      base.updatedAt = String(n.updated_at);
+      return;
+    }
+    if (String(n.updated_at) === base.updatedAt) return;
+    if (isOwnVersion(n)) adopt(n);
+    else if (!conflictRef.current) setConflict({ note: n, kind: 'remote' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredNotes, activeNoteId]);
+
+  /** Checks the server version, then hands off to the normal save. */
+  const guardedPersist = useCallback(
+    async (title: string, html: string, notify: boolean) => {
+      const base = baselineRef.current;
+      if (conflictRef.current) {
+        setLocalStatus('Not saved yet: choose a version above');
+        return;
+      }
+      if (base.id && base.updatedAt) {
+        const check = await checkNoteVersion(base.id, base.updatedAt);
+        if (check.status === 'conflict') {
+          if (isOwnVersion(check.note)) adopt(check.note);
+          else {
+            setConflict({ note: check.note, kind: 'save' });
+            setLocalStatus('Not saved yet: choose a version above');
+            return;
+          }
+        }
+      }
+      setLocalStatus(null);
+      await persistNoteNow(title, html, notify);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [persistNoteNow],
+  );
+
+  /** Same 600 ms debounce as the normal autosave, with a version check first. */
+  const guardedTrigger = (title: string, html: string) => {
+    setLocalStatus('Saving...');
+    if (noteSaveTimerRef.current) clearTimeout(noteSaveTimerRef.current);
+    noteSaveTimerRef.current = setTimeout(() => {
+      guardedPersist(title, html, false);
+    }, 600);
+  };
+
+  // Light check of the open note every 30 s while this tab is visible.
+  useEffect(() => {
+    if (!isActive) return;
+    const timer = setInterval(async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      const base = baselineRef.current;
+      if (!base.id || !base.updatedAt || conflictRef.current) return;
+      const check = await checkNoteVersion(base.id, base.updatedAt);
+      if (check.status !== 'conflict' || baselineRef.current.id !== check.note?.id) return;
+      if (isOwnVersion(check.note)) adopt(check.note);
+      else if (!conflictRef.current) setConflict({ note: check.note, kind: 'remote' });
+    }, 30000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, activeNoteId]);
+
+  const loadLatest = () => {
+    if (!conflict) return;
+    if (noteSaveTimerRef.current) clearTimeout(noteSaveTimerRef.current);
+    const latest = conflict.note;
+    baselineRef.current = { id: latest.id, updatedAt: latest.updated_at ? String(latest.updated_at) : null };
+    remember(seenContentRef, latest.content || '');
+    rememberTitle(latest.title || '');
+    setConflict(null);
+    setLocalStatus(null);
+    selectNote(latest);
+    onNotesChanged?.();
+  };
+
+  const keepMine = () => {
+    if (!conflict) return;
+    if (noteSaveTimerRef.current) clearTimeout(noteSaveTimerRef.current);
+    if (conflict.note?.updated_at) baselineRef.current.updatedAt = String(conflict.note.updated_at);
+    setConflict(null);
+    setLocalStatus(null);
+    const html = noteEditorRef.current ? noteEditorRef.current.innerHTML : noteContent;
+    persistNoteNow(noteTitle, html, true);
+  };
 
   return (
     <div id="view-notes" className={`view-container ${isActive ? 'active' : ''}`}>
@@ -222,6 +521,19 @@ export const NotesView: React.FC<NotesViewProps> = ({
                   }}
                 >
                   <Icon name="dashboard_customize" size={20} />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Import notes from other apps">
+                <IconButton
+                  aria-label="Import notes"
+                  id="btn-import-notes"
+                  onClick={() => setShowImport(true)}
+                  sx={{
+                    width: 44, height: 44, borderRadius: '12px', border: '1px solid', borderColor: 'divider',
+                    color: 'text.secondary', '&:hover': { color: 'secondary.main', borderColor: 'secondary.main' },
+                  }}
+                >
+                  <Icon name="upload_file" size={20} />
                 </IconButton>
               </Tooltip>
             </Stack>
@@ -307,6 +619,22 @@ export const NotesView: React.FC<NotesViewProps> = ({
               ...(riseSx(1) as object),
             }}
           >
+            <Collapse in={!!conflict} unmountOnExit>
+              <Alert
+                severity="warning"
+                role="status"
+                icon={<Icon name="sync_problem" size={20} />}
+                sx={{ mx: { xs: 1.5, sm: 2.5 }, mt: { xs: 1.5, sm: 2 }, borderRadius: '12px', alignItems: 'center', flexWrap: 'wrap' }}
+                action={
+                  <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                    <Button size="small" color="inherit" onClick={loadLatest}>Load latest</Button>
+                    <Button size="small" color="inherit" onClick={keepMine}>Keep mine (overwrite)</Button>
+                  </Stack>
+                }
+              >
+                {conflict?.kind === 'remote' ? 'Updated by someone else.' : 'This note was changed elsewhere.'}
+              </Alert>
+            </Collapse>
             <Box sx={{ px: { xs: 2, sm: 3 }, pt: { xs: 2, sm: 2.5 } }}>
               <Box
                 component="input"
@@ -320,7 +648,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
                   const val = e.target.value;
                   setNoteTitle(val);
                   const currentHtml = noteEditorRef.current ? noteEditorRef.current.innerHTML : noteContent;
-                  triggerNoteSave(val, currentHtml);
+                  guardedTrigger(val, currentHtml);
                 }}
                 sx={{
                   width: '100%', minWidth: 0, fontSize: { xs: 22, sm: 26 }, fontWeight: 800, letterSpacing: '-0.02em',
@@ -488,7 +816,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
                 onInput={e => {
                   const html = e.currentTarget.innerHTML;
                   setNoteContent(html);
-                  triggerNoteSave(noteTitle, html);
+                  guardedTrigger(noteTitle, html);
                 }}
                 onPaste={handleNotePaste}
               />
@@ -502,7 +830,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
               sx={{ px: { xs: 2, sm: 3 }, py: 1.5, borderTop: '1px solid', borderColor: 'divider' }}
             >
               <Typography variant="caption" color="text.secondary" id="note-save-status" noWrap sx={{ minWidth: 0 }}>
-                {noteSaveStatus}
+                {localStatus ?? noteSaveStatus}
               </Typography>
               <Stack direction="row" spacing={1} sx={{ flex: 'none' }}>
                 <Tooltip title="Delete note">
@@ -524,7 +852,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
                   onClick={() => {
                     if (noteSaveTimerRef.current) clearTimeout(noteSaveTimerRef.current);
                     const html = noteEditorRef.current ? noteEditorRef.current.innerHTML : noteContent;
-                    persistNoteNow(noteTitle, html, true);
+                    guardedPersist(noteTitle, html, true);
                   }}
                 >
                   Save
@@ -610,6 +938,13 @@ export const NotesView: React.FC<NotesViewProps> = ({
           </Card>
         </Box>
       </PageContainer>
+      <ImportNotesDialog
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={(r) => {
+          if (r.imported > 0) onNotesChanged?.();
+        }}
+      />
     </div>
   );
 };

@@ -56,6 +56,7 @@ class JournalCreateReq(BaseModel):
 
 class WeeklyReportReq(BaseModel):
     user_email: Optional[str] = None
+    language: Optional[str] = None  # "en" | "bn" | "hi" (optional)
     api_key: Optional[str] = None
     model: Optional[str] = None
     base_url: Optional[str] = None
@@ -64,6 +65,7 @@ class WeeklyReportReq(BaseModel):
 class UrlSummarizeReq(BaseModel):
     url: str
     user_email: Optional[str] = None
+    language: Optional[str] = None  # "en" | "bn" | "hi" (optional)
     api_key: Optional[str] = None
     model: Optional[str] = None
     base_url: Optional[str] = None
@@ -77,6 +79,17 @@ class FlashcardsReq(BaseModel):
     api_key: Optional[str] = None
     model: Optional[str] = None
     base_url: Optional[str] = None
+
+
+_LANG_NAMES = {"bn": "Bangla (Bengali)", "hi": "Hindi", "en": "English"}
+
+
+def language_instruction(language: Optional[str]) -> str:
+    """Prompt suffix asking for a non-English response; empty for English/unknown."""
+    code = (language or "").strip().lower()[:2]
+    if code in ("bn", "hi"):
+        return f" Respond in {_LANG_NAMES[code]}."
+    return ""
 
 
 async def _ask_llm(system_prompt: str, user_prompt: str, api_key: Optional[str] = None, model: Optional[str] = None, base_url: Optional[str] = None) -> str:
@@ -288,7 +301,7 @@ async def generate_weekly_report(req: WeeklyReportReq, authorization: Optional[s
                 done_tasks = [r["title"] for r in cur.fetchall()]
     context = f"Completed Tasks: {done_tasks}\nJournal Entries: {journals}"
     report = await _ask_llm(
-        "You are an encouraging executive productivity coach. Write a crisp Markdown Weekly Win Report with: 1) Top Wins, 2) Patterns & Blockers, 3) Recommended Focus for Next Week.",
+        "You are an encouraging executive productivity coach. Write a crisp Markdown Weekly Win Report with: 1) Top Wins, 2) Patterns & Blockers, 3) Recommended Focus for Next Week." + language_instruction(req.language),
         context,
         req.api_key,
         req.model,
@@ -322,7 +335,7 @@ async def summarize_web_url(req: UrlSummarizeReq, authorization: Optional[str] =
         if len(text) < 40:
             return JSONResponse(status_code=400, content={"error": "Could not extract readable text from this URL"})
         summary = await _ask_llm(
-            "You are a concise research assistant. Summarize the webpage in Markdown with: ## Executive Summary, ## Key Takeaways (bullets), and ## Actionable Next Steps.",
+            "You are a concise research assistant. Summarize the webpage in Markdown with: ## Executive Summary, ## Key Takeaways (bullets), and ## Actionable Next Steps." + language_instruction(req.language),
             f"URL: {url}\nTitle: {page_title}\n\nContent:\n{text}",
             req.api_key,
             req.model,

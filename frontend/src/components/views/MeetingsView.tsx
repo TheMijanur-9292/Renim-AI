@@ -1,6 +1,7 @@
 import React from 'react';
-import { Box, Button, Card, Chip, Grid2 as Grid, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import { Box, Button, Card, Chip, Grid2 as Grid, IconButton, MenuItem, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import { EmptyState, Icon, PageContainer, PageHeader, SectionCard, riseSx } from '../ui';
+import { SPEECH_LANG_OPTIONS, getLangPrefs, setLangPrefs, type SpeechLang } from '../../services/workspace';
 
 export interface MeetingsViewProps {
   isActive: boolean;
@@ -21,6 +22,84 @@ export interface MeetingsViewProps {
 const priorityColor = (p?: string): 'error' | 'warning' | 'default' => {
   const v = (p || 'medium').toLowerCase();
   return v === 'high' || v === 'urgent' ? 'error' : v === 'medium' ? 'warning' : 'default';
+};
+
+// ---- Speaker-labelled transcript rendering (presentation only) ----
+// Matches "Speaker A: text", "[Name]: text", "[00:25 - Name]: text" and "Name: text" (short names only).
+const SPEAKER_LINE = /^\s*(?:\[(?:\d{1,2}:\d{2}(?::\d{2})?\s*[-–]\s*)?([^\]]{1,40})\]|(Speaker\s+[A-Z0-9]{1,3}|[\p{L}][\p{L}\p{M} .'-]{0,30}))\s*:\s*(.+)$/u;
+const SPEAKER_COLORS = ['#0891b2', '#7c3aed', '#d97706', '#059669', '#db2777', '#2563eb', '#dc2626', '#65a30d'];
+
+type TranscriptRow = { speaker: string | null; text: string };
+
+const parseSpeakerTranscript = (raw: string): TranscriptRow[] | null => {
+  const lines = String(raw || '').split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length === 0) return null;
+  const rows: TranscriptRow[] = lines.map((line) => {
+    const m = line.match(SPEAKER_LINE);
+    if (!m) return { speaker: null, text: line.trim() };
+    const name = (m[1] || m[2] || '').trim();
+    // Guard against prose like "Note: ..." being treated as a speaker when brackets/"Speaker" are absent.
+    if (!m[1] && !/^Speaker\s/i.test(name) && name.split(/\s+/).length > 3) return { speaker: null, text: line.trim() };
+    return { speaker: name, text: m[3].trim() };
+  });
+  const tagged = rows.filter((r) => r.speaker).length;
+  return tagged >= 2 && tagged >= rows.length / 2 ? rows : null;
+};
+
+const SpeakerTranscript: React.FC<{ raw: string }> = ({ raw }) => {
+  const rows = React.useMemo(() => parseSpeakerTranscript(raw), [raw]);
+  if (!rows) return <>{raw}</>;
+  const colorOf = new Map<string, string>();
+  rows.forEach((r) => {
+    if (r.speaker && !colorOf.has(r.speaker)) colorOf.set(r.speaker, SPEAKER_COLORS[colorOf.size % SPEAKER_COLORS.length]);
+  });
+  return (
+    <Stack spacing={1} sx={{ whiteSpace: 'normal' }}>
+      {rows.map((r, i) => (
+        <Stack key={i} direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 0.5, sm: 1.25 }} alignItems={{ xs: 'flex-start', sm: 'baseline' }}>
+          {r.speaker ? (
+            <Chip
+              size="small"
+              label={r.speaker}
+              sx={{
+                flexShrink: 0, height: 22, fontSize: 11.5, fontWeight: 600, maxWidth: 160,
+                color: colorOf.get(r.speaker), bgcolor: 'transparent', border: 1, borderColor: colorOf.get(r.speaker),
+              }}
+            />
+          ) : null}
+          <Typography variant="body2" component="span" sx={{ fontSize: 13, lineHeight: 1.7, color: 'text.secondary', overflowWrap: 'anywhere' }}>
+            {r.text}
+          </Typography>
+        </Stack>
+      ))}
+    </Stack>
+  );
+};
+
+const RecorderLanguageSelect: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
+  const [lang, setLang] = React.useState<SpeechLang>(() => getLangPrefs().speechLang);
+  React.useEffect(() => {
+    const sync = () => setLang(getLangPrefs().speechLang);
+    window.addEventListener('renim-lang-prefs', sync);
+    return () => window.removeEventListener('renim-lang-prefs', sync);
+  }, []);
+  return (
+    <TextField
+      select
+      size="small"
+      label="Speech language"
+      value={lang}
+      disabled={disabled}
+      onChange={(e) => setLang(setLangPrefs({ speechLang: e.target.value as SpeechLang }).speechLang)}
+      fullWidth
+      sx={{ mt: 1.5 }}
+      helperText={disabled ? 'Applies to your next recording.' : undefined}
+    >
+      {SPEECH_LANG_OPTIONS.map((o) => (
+        <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+      ))}
+    </TextField>
+  );
 };
 
 export const MeetingsView: React.FC<MeetingsViewProps> = ({
@@ -99,6 +178,7 @@ export const MeetingsView: React.FC<MeetingsViewProps> = ({
                     </IconButton>
                   </Tooltip>
                 </Stack>
+                <RecorderLanguageSelect disabled={isMeetingRecording} />
               </SectionCard>
 
               <SectionCard index={2} icon="history" accent="slate" title="Past meetings" subtitle={`${filteredMeetings.length} saved`}>
@@ -212,7 +292,7 @@ export const MeetingsView: React.FC<MeetingsViewProps> = ({
                     {isMeetingRecording
                       ? liveTranscriptText
                       : activeMeeting
-                      ? activeMeeting.raw_transcript || 'No transcript saved.'
+                      ? (activeMeeting.raw_transcript ? <SpeakerTranscript raw={activeMeeting.raw_transcript} /> : 'No transcript saved.')
                       : 'The transcript will appear here.'}
                   </Box>
                 </Box>

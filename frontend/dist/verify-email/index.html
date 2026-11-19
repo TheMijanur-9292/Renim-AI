@@ -1,0 +1,36 @@
+<!DOCTYPE html><html lang="en"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Confirm email — Renim AI</title><meta name="robots" content="noindex"><link rel="icon" type="image/svg+xml" href="/icon.svg"><meta name="theme-color" content="#0891b2"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0"><style>*,*:before,*:after{box-sizing:border-box}[hidden]{display:none!important}:root{--bg:#fbfcfd;--ink:#0f172a;--muted:#475569;--card:#fff;--line:#e9eef3;--btn:#374151;--btn-h:#1f2937}@media(prefers-color-scheme:dark){:root{--bg:#0b1120;--ink:#e2e8f0;--muted:#94a3b8;--card:#111827;--line:#1f2937;--btn:#e5e7eb;--btn-h:#f9fafb}}body{margin:0;background:var(--bg);color:var(--ink);font-family:Plus Jakarta Sans,system-ui,sans-serif;-webkit-font-smoothing:antialiased}a{color:#0e7490;text-decoration:none}.ms{font-family:Material Symbols Rounded;font-weight:400;font-style:normal;font-size:20px;line-height:1;display:inline-block;white-space:nowrap;font-feature-settings:"liga";font-variation-settings:"FILL" 0,"wght" 400,"opsz" 24;user-select:none}.shell{position:relative;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;overflow:hidden}.aur{position:absolute;left:0;right:0;top:0;height:620px;filter:blur(70px);opacity:.55;pointer-events:none}.blob{position:absolute;border-radius:50%}.b1{width:420px;height:340px;left:-60px;top:-100px;background:#a5f3fc;animation:a1 16s ease-in-out infinite}.b2{width:380px;height:320px;right:-40px;top:-40px;background:#c7d2fe;animation:a2 19s ease-in-out infinite}@media(prefers-color-scheme:dark){.aur{opacity:.18}}@keyframes a1{0%,to{transform:translate(0)}50%{transform:translate(120px,50px)}}@keyframes a2{0%,to{transform:translate(0)}50%{transform:translate(-140px,60px)}}.top{position:relative;display:flex;justify-content:space-between;align-items:center;padding:24px clamp(16px,5vw,56px)}.brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:800;font-size:19px;letter-spacing:-.02em}.brand img{width:34px;height:34px;border-radius:10px}.brand b{color:#0891b2}.center{position:relative;flex:1;display:flex;align-items:center;justify-content:center;padding:16px 16px 48px}.card{width:100%;max-width:440px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:32px 28px;text-align:center;box-shadow:0 30px 60px -30px #0f172a40;animation:rise .5s cubic-bezier(.2,.7,.2,1) both}@keyframes rise{0%{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}.tile{width:56px;height:56px;border-radius:16px;margin:0 auto 18px;display:flex;align-items:center;justify-content:center}.tile .ms{font-size:28px}.t-wait{background:#ecfeff;color:#0e7490}.t-ok{background:#ecfdf5;color:#059669}.t-bad{background:#fffbeb;color:#b45309}.h{margin:0;font-size:clamp(24px,3vw,30px);letter-spacing:-.03em;line-height:1.15}.p{margin:10px 0 26px;color:var(--muted);font-size:15px;line-height:1.55}.btn{display:flex;width:100%;height:50px;border-radius:12px;background:var(--btn);color:var(--bg);font-weight:700;font-size:15px;align-items:center;justify-content:center;gap:8px;transition:background .15s}.btn:hover{background:var(--btn-h);color:var(--bg)}.spin{width:22px;height:22px;border-radius:50%;border:3px solid #cdeef4;border-top-color:#0891b2;animation:sp .9s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head> <body> <div class="shell"> <div class="aur" aria-hidden="true"><span class="blob b1"></span><span class="blob b2"></span></div> <div class="top"> <a href="/" class="brand"><img src="/icon.svg" alt="" width="34" height="34"><span>Renim <b>AI</b></span></a> </div> <main class="center"> <div class="card" role="status" aria-live="polite"> <section id="st-wait"> <div class="tile t-wait"><span class="spin" aria-hidden="true"></span></div> <h1 class="h">Confirming your email…</h1> <p class="p">This only takes a moment.</p> </section> <section id="st-ok" hidden> <div class="tile t-ok"><span class="ms" aria-hidden="true">check_circle</span></div> <h1 class="h">Email confirmed</h1> <p class="p">Thanks. Your account is all set.</p> <a class="btn" id="go-ok" href="/app">Open Renim <span class="ms" aria-hidden="true">arrow_forward</span></a> </section> <section id="st-bad" hidden> <div class="tile t-bad"><span class="ms" aria-hidden="true">schedule</span></div> <h1 class="h">This link has expired</h1> <p class="p">Links work once and for 48 hours. Sign in and choose “Resend email” to get a new one.</p> <a class="btn" id="go-bad" href="/signin">Go to sign in <span class="ms" aria-hidden="true">arrow_forward</span></a> </section> </div> </main> </div> <script>
+  (function () {
+    var show = function (id) {
+      ['st-wait', 'st-ok', 'st-bad'].forEach(function (s) { document.getElementById(s).hidden = s !== id; });
+    };
+    var signedIn = false;
+    try { var s = JSON.parse(localStorage.getItem('sb_session') || 'null'); signedIn = !!(s && s.access_token); } catch (e) {}
+    var target = signedIn ? '/app' : '/signin';
+    document.getElementById('go-ok').href = target;
+    document.getElementById('go-ok').firstChild.nodeValue = signedIn ? 'Open Renim ' : 'Go to sign in ';
+    if (signedIn) { document.getElementById('go-bad').href = '/app'; document.getElementById('go-bad').firstChild.nodeValue = 'Open Renim '; }
+
+    var token = new URLSearchParams(window.location.search).get('token');
+    if (!token) { show('st-bad'); return; }
+    fetch('/api/auth/verify-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token })
+    })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (res.ok && res.d && res.d.verified) {
+          try {
+            var s = JSON.parse(localStorage.getItem('sb_session') || 'null');
+            if (s && s.user) { s.user.email_verified = true; localStorage.setItem('sb_session', JSON.stringify(s)); }
+          } catch (e) {}
+          history.replaceState(null, '', '/verify-email');
+          show('st-ok');
+        } else {
+          show('st-bad');
+        }
+      })
+      .catch(function () { show('st-bad'); });
+  })();
+</script> </body> </html>

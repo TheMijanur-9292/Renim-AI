@@ -210,6 +210,30 @@ def verify_password_reset_token(token: str) -> Optional[str]:
     return None
 
 
+def create_email_verify_token(email: str) -> str:
+    """Signed token for confirming an email address (48h)."""
+    header = {"alg": "HS256", "typ": "JWT"}
+    now = int(time.time())
+    payload = {
+        "sub": email.strip().lower(),
+        "purpose": "verify_email",
+        "iat": now,
+        "exp": now + 48 * 3600,
+    }
+    header_b64 = _b64url_encode(json.dumps(header, separators=(",", ":")).encode("utf-8"))
+    payload_b64 = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
+    sig = hmac.new(JWT_SECRET.encode("utf-8"), signing_input, hashlib.sha256).digest()
+    return f"{header_b64}.{payload_b64}.{_b64url_encode(sig)}"
+
+
+def verify_email_verify_token(token: str) -> Optional[str]:
+    payload = verify_access_token(token)
+    if payload and payload.get("purpose") == "verify_email" and payload.get("sub"):
+        return str(payload["sub"]).strip().lower()
+    return None
+
+
 def client_ip(request) -> str:
     """Client IP, honouring X-Forwarded-For only when TRUST_PROXY is enabled (e.g. behind Vercel/Nginx)."""
     if os.getenv("TRUST_PROXY", "").strip().lower() in ("1", "true", "yes"):

@@ -1,4 +1,5 @@
 import { ThemeProvider } from '@mui/material/styles';
+import { getSpeechLang } from '../services/workspace';
 import { makeRenimTheme } from '../theme/renimTheme';
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -25,6 +26,10 @@ import { MobileBottomNav } from './common/MobileBottomNav';
 
 // View Modules
 import { TodayView } from './views/TodayView';
+import { NotificationCenter } from './notifications/NotificationCenter';
+import { useNotificationInbox, classifyMessage } from './notifications/useNotificationInbox';
+import { WelcomeDialog, hasSeenWelcome, loadUseCases } from './onboarding/WelcomeDialog';
+import { VerifyEmailBanner } from './onboarding/VerifyEmailBanner';
 import { MeetingsView } from './views/MeetingsView';
 import { NotesView } from './views/NotesView';
 import { CalendarView } from './views/CalendarView';
@@ -222,7 +227,7 @@ export default function WorkspaceApp() {
 
   // Live Voice Dictation & Speech Recognition
   const [isVoiceDictating, setIsVoiceDictating] = useState(false);
-  const [voiceDictationLang, setVoiceDictationLang] = useState<'bn-BD' | 'en-US'>('bn-BD');
+  const [voiceDictationLang, setVoiceDictationLang] = useState<'bn-BD' | 'en-US'>(() => (getSpeechLang().startsWith('bn') ? 'bn-BD' : 'en-US'));
   const speechRecognitionRef = useRef<any>(null);
 
   // Kanban Drag and Drop & Sprint Velocity
@@ -243,6 +248,12 @@ export default function WorkspaceApp() {
 
   // Toasts
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const inbox = useNotificationInbox(userEmail);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [useCases, setUseCases] = useState<string[]>([]);
+  useEffect(() => {
+    setUseCases(loadUseCases(userEmail));
+  }, [userEmail]);
 
   useEffect(() => {
     if (!userEmail) return;
@@ -267,6 +278,7 @@ export default function WorkspaceApp() {
   const showToast = (message: string, type: ToastItem['type'] = 'info') => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
+    inbox.add(message, classifyMessage(message, type));
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 4000);
@@ -386,7 +398,7 @@ export default function WorkspaceApp() {
     setCfgAiKey(ai.apiKey || 'twocoms_dev_z0_q6r3');
     setCfgAiModel(ai.model || 'qwen2.5');
 
-    refreshWorkspaceData().then(({ eList, tList, nList, cSessions }) => {
+    refreshWorkspaceData().then(({ mList, eList, tList, nList, cSessions }) => {
       if (nList && nList.length > 0 && !activeNoteIdRef.current) {
         selectNote(nList[0]);
       }
@@ -400,6 +412,11 @@ export default function WorkspaceApp() {
         );
       }
       generateMorningBriefing(eList, tList, nList);
+      // First visit: no notes, tasks or meetings yet and the welcome hasn't been seen.
+      const isEmpty = !(mList && mList.length) && !(nList && nList.length) && !(tList && tList.length);
+      if (isEmpty && navigator.onLine && !hasSeenWelcome(db.getUserEmail())) {
+        setShowWelcome(true);
+      }
     });
   }, []);
 
@@ -1275,6 +1292,7 @@ export default function WorkspaceApp() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('user_email', db.getUserEmail());
+      try { formData.append('language', String(JSON.parse(localStorage.getItem('renim_lang_prefs') || '{}').speechLang || 'en').slice(0, 2)); } catch {}
 
       const res = await fetch('/api/meetings/audio-transcribe', {
         method: 'POST',
@@ -1530,7 +1548,7 @@ export default function WorkspaceApp() {
 
       recognition.onstart = () => {
         setIsVoiceDictating(true);
-        showToast(`🎙️ Listening in ${voiceDictationLang === 'bn-BD' ? 'Bengali (বাংলা)' : 'English'}... Speak now!`, 'success');
+        showToast(`Listening in ${voiceDictationLang === 'bn-BD' ? 'Bengali (বাংলা)' : 'English'}... Speak now!`, 'success');
       };
 
       recognition.onresult = (event: any) => {
@@ -1792,6 +1810,17 @@ export default function WorkspaceApp() {
           userName={userName}
           userAvatarUrl={userAvatarUrl}
           onOpenProfile={() => setActiveView('view-profile')}
+          notificationCenter={
+            <NotificationCenter
+              items={inbox.items}
+              unreadCount={inbox.unreadCount}
+              onMarkAllRead={inbox.markAllRead}
+              onMarkRead={inbox.markRead}
+              onClearAll={inbox.clearAll}
+              isPushEnabled={isPushEnabled}
+              onTogglePush={handleTogglePushNotifications}
+            />
+          }
           orgs={tenantOrgs}
           activeOrgId={activeOrgId}
           onSelectOrg={(orgId) => {
@@ -1807,8 +1836,30 @@ export default function WorkspaceApp() {
           }}
         />
 
+        <VerifyEmailBanner
+          accessToken={isAuthenticated ? db.accessToken : null}
+          userEmail={userEmail}
+          initialVerified={(db.user as any)?.email_verified}
+          onNotify={showToast}
+        />
+
+        <WelcomeDialog
+          open={showWelcome}
+          userEmail={userEmail}
+          userName={userName}
+          onClose={() => setShowWelcome(false)}
+          onUseCasesChange={setUseCases}
+          onWriteNote={() => { setActiveView('view-notes'); handleNewNote(); }}
+          onRecordMeeting={() => setActiveView('view-meetings')}
+          onAddTask={() => setShowTaskModal(true)}
+          isPushEnabled={isPushEnabled}
+          onEnableNotifications={handleTogglePushNotifications}
+          onConnectCalendar={() => setActiveView('view-calendar')}
+        />
+
         <TodayView
           isActive={activeView === 'view-today'}
+          useCases={useCases}
           userName={userName}
           isVoiceMemoActive={isVoiceMemoActive}
           handleVoiceMemoToggle={handleVoiceMemoToggle}
@@ -1875,6 +1926,7 @@ export default function WorkspaceApp() {
             handleDeleteNote={handleDeleteNote}
             noteSaveTimerRef={noteSaveTimerRef}
             persistNoteNow={persistNoteNow}
+            onNotesChanged={refreshWorkspaceData}
             handleNoteAI={handleNoteAI}
             handleOpenEmailModal={handleOpenEmailModal}
             handleExportPDF={handleExportPDF}

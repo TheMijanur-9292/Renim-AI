@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
 import io
+import asyncio
 import httpx
 import pypdf
 from dotenv import load_dotenv
@@ -28,6 +29,19 @@ from psycopg_pool import ConnectionPool
 # Load environment variables from project root .env
 ROOT_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT_DIR / ".env")
+
+# Optional error monitoring: a no-op unless SENTRY_DSN is set and sentry-sdk is installed.
+if os.getenv("SENTRY_DSN"):
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=os.getenv("SENTRY_DSN"),
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            send_default_pii=False,
+            environment=os.getenv("APP_ENV", "production"),
+        )
+    except ImportError:
+        print("[sentry] SENTRY_DSN is set but sentry-sdk is not installed; error monitoring disabled.")
 
 PORT = int(os.getenv("PORT", "3057"))
 NEON_CONN_STRING = os.getenv("DATABASE_URL", "")
@@ -66,6 +80,8 @@ from auth_utils import (
     check_rate_limit,
     create_password_reset_token,
     verify_password_reset_token,
+    create_email_verify_token,
+    verify_email_verify_token,
 )
 from routers.tenant import router as tenant_router
 from routers.orgs import router as orgs_router
@@ -77,6 +93,7 @@ from routers.audit import router as audit_router
 from routers.user_powerups import router as user_powerups_router
 from routers.profile import router as profile_router
 from routers.superadmin import router as superadmin_router
+from routers.calendar_sync import router as calendar_sync_router
 
 # Global PostgreSQL Connection Pool (Thread-Safe across Windows & Linux)
 db_pool: Optional[ConnectionPool] = None
@@ -150,7 +167,7 @@ async def enterprise_rate_limit_and_metrics(request: Request, call_next):
     if not request.url.path.startswith(("/docs", "/redoc", "/openapi")):
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://browser.sentry-cdn.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; "
             "media-src 'self' blob: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
         )
@@ -159,6 +176,8 @@ async def enterprise_rate_limit_and_metrics(request: Request, call_next):
 app.include_router(orgs_router)
 app.include_router(billing_router)
 app.include_router(rag_router)
+from routers.imports import router as imports_router  # noqa: E402
+app.include_router(imports_router)
 app.include_router(integrations_router)
 app.include_router(analytics_router)
 app.include_router(audit_router)
@@ -166,6 +185,7 @@ app.include_router(user_powerups_router)
 app.include_router(tenant_router)
 app.include_router(profile_router)
 app.include_router(superadmin_router)
+app.include_router(calendar_sync_router)
 
 
 # ================= PYDANTIC SCHEMAS =================
@@ -231,6 +251,24 @@ class NoteUpdate(BaseModel):
     content: Optional[str] = None
     folder: Optional[str] = None
     tags: Optional[List[str]] = None
+    # Optimistic concurrency: when set and the stored updated_at differs, the update is rejected with 409.
+    expected_updated_at: Optional[str] = None
+
+
+def _same_timestamp(stored: Any, expected: str) -> bool:
+    """Compares a stored timestamptz with a client-sent ISO string (tolerates 'Z' and microsecond formatting)."""
+    if stored is None:
+        return True
+    try:
+        exp = datetime.fromisoformat(expected.strip().replace("Z", "+00:00"))
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        st = stored if hasattr(stored, "tzinfo") else datetime.fromisoformat(str(stored))
+        if st.tzinfo is None:
+            st = st.replace(tzinfo=timezone.utc)
+        return abs((st - exp).total_seconds()) < 0.001
+    except Exception:
+        return str(stored) == expected
 
 
 class CalendarEventCreate(BaseModel):
@@ -293,6 +331,10 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
 
 
 def serialize_row(row: dict) -> dict:
@@ -695,8 +737,27 @@ def update_note(
     if role == "viewer":
         return JSONResponse(status_code=403, content={"error": "Viewer role is read-only in this organization."})
     try:
-        with db_pool.connection() as conn:
+        with db_pool.connection() as conn, conn.transaction():
             with conn.cursor() as cur:
+                if note.expected_updated_at:
+                    if org_id and org_id != "personal":
+                        cur.execute("SELECT * FROM public.notes WHERE id = %s AND org_id = %s FOR UPDATE;", (note_id, org_id))
+                    else:
+                        cur.execute(
+                            "SELECT * FROM public.notes WHERE id = %s AND LOWER(user_email) = %s FOR UPDATE;",
+                            (note_id, email),
+                        )
+                    current = cur.fetchone()
+                    if not current:
+                        return JSONResponse(status_code=404, content={"error": "Note not found or access denied."})
+                    if not _same_timestamp(current.get("updated_at"), note.expected_updated_at):
+                        return JSONResponse(
+                            status_code=409,
+                            content={"error": "This note was changed elsewhere.", "conflict": True, "note": serialize_row(current)},
+                        )
+                    if note.title is None and note.content is None and note.folder is None:
+                        # Version check only: nothing to change, so updated_at is left as is.
+                        return serialize_row(current)
                 if org_id and org_id != "personal":
                     cur.execute(
                         """
@@ -1320,19 +1381,27 @@ def auth_signup(payload: UserSignupRequest, request: Request):
                     )
                 cur.execute(
                     """
-                    INSERT INTO public.app_users (email, full_name, password_hash)
-                    VALUES (%s, %s, %s)
-                    RETURNING id, email, full_name, created_at;
+                    INSERT INTO public.app_users (email, full_name, password_hash, email_verified)
+                    VALUES (%s, %s, %s, false)
+                    RETURNING id, email, full_name, created_at, email_verified;
                     """,
                     (email, full_name, hash_password(payload.password)),
                 )
                 user_row = serialize_row(cur.fetchone())
                 token = create_access_token(user_row["email"], user_row["full_name"], "owner")
                 log_audit(user_row["email"], "auth.signup", "user", user_row["id"], ip_address=ip)
-                return {
-                    "access_token": token,
-                    "user": user_row,
-                }
+        response = {
+            "access_token": token,
+            "user": user_row,
+        }
+        # Never block signup if the confirmation email fails.
+        try:
+            dev_link = _send_verification_email(email, request)
+            if dev_link:
+                response["verify_link"] = dev_link
+        except Exception as mail_exc:
+            print(f"WARNING: verification email failed: {mail_exc}")
+        return response
     except Exception as exc:
         return JSONResponse(status_code=500, content=server_error(exc))
 
@@ -1357,7 +1426,7 @@ def auth_signin(payload: UserSigninRequest, request: Request):
         with db_pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id, email, full_name, password_hash, role, is_superadmin, is_active, totp_secret, totp_enabled, token_version FROM public.app_users WHERE email = %s;",
+                    "SELECT id, email, full_name, password_hash, role, is_superadmin, is_active, totp_secret, totp_enabled, token_version, email_verified FROM public.app_users WHERE email = %s;",
                     (email,),
                 )
                 row = cur.fetchone()
@@ -1392,6 +1461,7 @@ def auth_signin(payload: UserSigninRequest, request: Request):
                     "full_name": row["full_name"] or email.split("@")[0],
                     "role": role,
                     "is_superadmin": is_superadmin,
+                    "email_verified": row.get("email_verified") is not False,
                 }
                 token = create_access_token(
                     user_row["email"],
@@ -1585,6 +1655,129 @@ def reset_password(req: ResetPasswordRequest, request: Request):
                     return JSONResponse(status_code=400, content={"error": "Invalid or expired password reset token."})
         log_audit(email, "auth.password_reset", "user", email, ip_address=ip)
         return {"success": True, "message": "Password updated successfully. Please sign in."}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=server_error(exc))
+
+
+def _dev_links_enabled() -> bool:
+    return os.getenv("DEV_RETURN_RESET_TOKEN", "").strip().lower() in ("1", "true", "yes")
+
+
+def _verify_link_for(email: str, request: Request) -> str:
+    base = os.getenv("APP_BASE_URL", "").strip().rstrip("/") or str(request.base_url).rstrip("/")
+    return f"{base}/verify-email?token={create_email_verify_token(email)}"
+
+
+def _send_verification_email(email: str, request: Request) -> Optional[str]:
+    """Sends the confirm-email link. Returns the link only in dev mode when email is not configured."""
+    link = _verify_link_for(email, request)
+    resend_key = os.getenv("RESEND_API_KEY", "").strip()
+    if resend_key:
+        with httpx.Client(timeout=15.0) as client:
+            client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                json={
+                    "from": os.getenv("EMAIL_FROM", "Renim AI Security <onboarding@resend.dev>"),
+                    "to": [email],
+                    "subject": "Confirm your email for Renim AI",
+                    "html": f"<p>Please confirm your email address to keep your account secure.</p><p><a href='{link}'>Confirm email</a></p><p>This link works for 48 hours. If you did not create an account, you can ignore this email.</p>",
+                },
+            )
+        return None
+    print("WARNING: RESEND_API_KEY is not configured; verification email was not sent.")
+    return link if _dev_links_enabled() else None
+
+
+def _verify_email_token(token: str, request: Request):
+    ip = client_ip(request)
+    allowed, retry_after = check_rate_limit(f"verify-email:{ip}", max_requests=20, window_seconds=300)
+    if not allowed:
+        return JSONResponse(status_code=429, content={"error": f"Too many attempts. Retry in {retry_after}s."})
+    email = verify_email_verify_token(token or "")
+    if not email:
+        return JSONResponse(status_code=400, content={"error": "This link is invalid or has expired.", "status": "expired"})
+    try:
+        with db_pool.connection() as conn:
+            with conn.cursor() as cur:
+                # Single-use: only flips an unverified account; a reused link reports already verified.
+                cur.execute(
+                    "UPDATE public.app_users SET email_verified = true, updated_at = now() WHERE email = %s AND email_verified = false RETURNING id;",
+                    (email,),
+                )
+                updated = cur.fetchone()
+                if not updated:
+                    cur.execute("SELECT id FROM public.app_users WHERE email = %s;", (email,))
+                    if not cur.fetchone():
+                        return JSONResponse(status_code=400, content={"error": "This link is invalid or has expired.", "status": "expired"})
+                    return {"verified": True, "already_verified": True}
+        log_audit(email, "auth.email_verified", "user", email, ip_address=ip)
+        return {"verified": True}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=server_error(exc))
+
+
+@app.get("/api/auth/verify-email")
+def verify_email_get(token: str, request: Request):
+    return _verify_email_token(token, request)
+
+
+@app.post("/api/auth/verify-email")
+def verify_email_post(req: VerifyEmailRequest, request: Request):
+    return _verify_email_token(req.token, request)
+
+
+@app.post("/api/auth/resend-verification")
+def resend_verification(request: Request, authorization: Optional[str] = Header(default=None)):
+    email = resolve_authenticated_email(authorization)
+    if not email:
+        return JSONResponse(status_code=401, content={"error": "Authentication required."})
+    allowed, retry_after = check_rate_limit(f"resend-verify:{email}", max_requests=3, window_seconds=900)
+    if not allowed:
+        return JSONResponse(status_code=429, content={"error": f"Please wait a little before asking again. Retry in {retry_after}s."}, headers={"Retry-After": str(retry_after)})
+    try:
+        with db_pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT email_verified FROM public.app_users WHERE email = %s;", (email,))
+                row = cur.fetchone()
+        if not row:
+            return JSONResponse(status_code=404, content={"error": "Account not found."})
+        if row.get("email_verified") is not False:
+            return {"sent": False, "already_verified": True}
+        dev_link = _send_verification_email(email, request)
+        log_audit(email, "auth.verification_resent", "user", email)
+        out = {"sent": True}
+        if dev_link:
+            out["verify_link"] = dev_link
+        return out
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=server_error(exc))
+
+
+@app.get("/api/auth/me")
+def auth_me(authorization: Optional[str] = Header(default=None)):
+    email = resolve_authenticated_email(authorization)
+    if not email:
+        return JSONResponse(status_code=401, content={"error": "Authentication required."})
+    try:
+        with db_pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, email, full_name, role, is_superadmin, email_verified FROM public.app_users WHERE email = %s;",
+                    (email,),
+                )
+                row = cur.fetchone()
+        if not row:
+            return JSONResponse(status_code=404, content={"error": "Account not found."})
+        is_superadmin = bool(row.get("is_superadmin") or row.get("role") == "superadmin")
+        return {"user": {
+            "id": str(row["id"]),
+            "email": row["email"],
+            "full_name": row["full_name"] or email.split("@")[0],
+            "role": "superadmin" if is_superadmin else (row.get("role") or "owner"),
+            "is_superadmin": is_superadmin,
+            "email_verified": row.get("email_verified") is not False,
+        }}
     except Exception as exc:
         return JSONResponse(status_code=500, content=server_error(exc))
 
@@ -1946,18 +2139,104 @@ async def draft_email(payload: EmailDraftRequest, authorization: Optional[str] =
         return JSONResponse(status_code=500, content=server_error(exc))
 
 
+_ASSEMBLYAI_BASE = "https://api.assemblyai.com/v2"
+_LANG_NAMES = {"bn": "Bangla (Bengali)", "hi": "Hindi", "en": "English"}
+
+
+def _transcribe_language_instruction(lang_code: str) -> str:
+    code = (lang_code or "")[:2]
+    return f" Respond in {_LANG_NAMES[code]}." if code in ("bn", "hi") else ""
+
+
+async def _assemblyai_transcribe(content: bytes, lang_code: str, timeout_s: float = 240.0):
+    """Upload audio to AssemblyAI and poll for a speaker-labelled transcript.
+
+    Returns (transcript_text, utterances, duration_seconds) or None on any failure,
+    so callers can fall back to the default behaviour.
+    """
+    api_key = os.getenv("ASSEMBLYAI_API_KEY", "").strip()
+    if not api_key:
+        return None
+    headers = {"authorization": api_key}
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            up = await client.post(f"{_ASSEMBLYAI_BASE}/upload", headers=headers, content=content)
+            up.raise_for_status()
+            audio_url = up.json().get("upload_url")
+            if not audio_url:
+                return None
+            body: dict = {"audio_url": audio_url, "speaker_labels": True}
+            code = (lang_code or "")[:2]
+            if lang_code == "auto" or code not in ("bn", "hi", "en"):
+                body["language_detection"] = True
+            else:
+                body["language_code"] = code
+            created = await client.post(f"{_ASSEMBLYAI_BASE}/transcript", headers=headers, json=body)
+            created.raise_for_status()
+            tid = created.json().get("id")
+            if not tid:
+                return None
+            deadline = time.monotonic() + timeout_s
+            data: dict = {}
+            while time.monotonic() < deadline:
+                poll = await client.get(f"{_ASSEMBLYAI_BASE}/transcript/{tid}", headers=headers)
+                poll.raise_for_status()
+                data = poll.json()
+                status = data.get("status")
+                if status == "completed":
+                    break
+                if status == "error":
+                    print(f"[AssemblyAI] transcription error: {data.get('error')}")
+                    return None
+                await asyncio.sleep(3)
+            else:
+                print("[AssemblyAI] transcription timed out")
+                return None
+        utterances = [
+            {
+                "speaker": f"Speaker {u.get('speaker', '?')}",
+                "text": (u.get("text") or "").strip(),
+                "start": u.get("start"),
+                "end": u.get("end"),
+            }
+            for u in (data.get("utterances") or [])
+        ]
+        if utterances:
+            transcript = "\n".join(f"{u['speaker']}: {u['text']}" for u in utterances)
+        else:
+            transcript = (data.get("text") or "").strip()
+        if not transcript:
+            return None
+        duration = int(data.get("audio_duration") or 0)
+        return transcript, utterances, duration
+    except Exception as exc:
+        print(f"[AssemblyAI] falling back: {exc}")
+        return None
+
+
 @app.post("/api/meetings/audio-transcribe")
 async def transcribe_meeting_audio(
     file: UploadFile = File(...),
     user_email: str = Form("guest@renimai.com"),
+    language: Optional[str] = Form(None),
 ):
     try:
         email = user_email.strip().lower()
         content = await file.read()
         filename = file.filename or "recording.webm"
-        
-        # Audio stream synthesis & transcription
-        transcript = (
+        lang_code = (language or "").strip().lower()
+        utterances: list = []
+        duration_seconds = 80
+
+        assembly_result = None
+        if os.getenv("ASSEMBLYAI_API_KEY", "").strip() and content:
+            assembly_result = await _assemblyai_transcribe(content, lang_code)
+
+        if assembly_result:
+            transcript, utterances, duration_seconds = assembly_result
+        else:
+            # Audio stream synthesis & transcription (fallback when no transcription provider is configured)
+            transcript = (
             f"Audio captured via microphone: {filename} ({len(content) // 1024} KB).\n\n"
             "[00:00 - Lead Architect]: Team sync started. Reviewing sprint deliverables and system latency metrics.\n"
             "[00:25 - AI Engineer]: The Qwen 2.5 and OpenRouter models are deployed with high throughput. Document RAG extraction is indexed.\n"
@@ -1971,6 +2250,7 @@ async def transcribe_meeting_audio(
                 "content": (
                     "You are Renim AI's Audio Meeting Copilot. Based on this audio transcript, extract: "
                     "1. A concise 2-sentence executive summary. 2. Key discussion takeaways. 3. Action items."
+                    + _transcribe_language_instruction(lang_code)
                 ),
             },
             {"role": "user", "content": transcript},
@@ -1981,8 +2261,10 @@ async def transcribe_meeting_audio(
             "transcript": transcript,
             "analysis": summary_res,
             "filename": filename,
-            "duration_seconds": 80,
+            "duration_seconds": duration_seconds,
             "word_count": len(transcript.split()),
+            "utterances": utterances,
+            "language": lang_code or None,
         }
     except Exception as exc:
         return JSONResponse(status_code=500, content=server_error(exc))

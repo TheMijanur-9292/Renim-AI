@@ -1,6 +1,45 @@
 import React from 'react';
 import { Box, Button, Divider, IconButton, InputAdornment, MenuItem, Stack, Switch, Tab, Tabs, TextField, Typography } from '@mui/material';
 import { Icon, PageContainer, PageHeader, SectionCard, riseSx } from '../ui';
+import { AI_LANG_OPTIONS, SPEECH_LANG_OPTIONS, getLangPrefs, setLangPrefs, type AiLang, type LangPrefs, type SpeechLang } from '../../services/workspace';
+
+const LanguageSettingsCard: React.FC<{ showToast: SettingsViewProps['showToast'] }> = ({ showToast }) => {
+  const [prefs, setPrefs] = React.useState<LangPrefs>(() => getLangPrefs());
+  const update = (patch: Partial<LangPrefs>) => {
+    setPrefs(setLangPrefs(patch));
+    showToast('Language preference saved', 'success');
+  };
+  return (
+    <SectionCard index={2} icon="translate" accent="cyan" title="Language" subtitle="Choose the language you speak in and the language AI replies in.">
+      <Stack spacing={2.25} direction={{ xs: 'column', sm: 'row' }}>
+        <TextField
+          select
+          label="Speech language"
+          value={prefs.speechLang}
+          onChange={(e) => update({ speechLang: e.target.value as SpeechLang })}
+          helperText="Used for live meeting capture, voice memos and dictation."
+          fullWidth
+        >
+          {SPEECH_LANG_OPTIONS.map((o) => (
+            <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          select
+          label="AI response language"
+          value={prefs.aiLang}
+          onChange={(e) => update({ aiLang: e.target.value as AiLang })}
+          helperText="Summaries, briefings, chat and note actions."
+          fullWidth
+        >
+          {AI_LANG_OPTIONS.map((o) => (
+            <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+          ))}
+        </TextField>
+      </Stack>
+    </SectionCard>
+  );
+};
 
 
 export interface SettingsViewProps {
@@ -78,12 +117,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     { label: 'Notifications', icon: 'notifications' },
     { label: 'Backup & export', icon: 'cloud_download' },
     { label: 'Data & plan', icon: 'database' },
+    { label: 'Language', icon: 'translate' },
   ];
 
   return (
     <div id="view-settings" className={`view-container ${isActive ? 'active' : ''}`}>
       <PageContainer>
-        <PageHeader overline="Workspace" title="Settings" description="Choose your AI assistant, alerts and backups." />
+        <PageHeader overline="Workspace" title="Settings" description="Choose your AI assistant, language, alerts and backups." />
 
         <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3, ...riseSx(1) }}>
           <Tabs
@@ -99,6 +139,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             ))}
           </Tabs>
         </Box>
+
+        {tab === 4 && <LanguageSettingsCard showToast={showToast} />}
 
         {tab === 0 && (
           <SectionCard index={2} icon="auto_awesome" accent="violet" title="AI assistant" subtitle="Pick a preset or connect your own provider.">

@@ -23,6 +23,8 @@ export interface TodayViewProps {
   todayEvents: any[];
   onOpenFocusModal?: () => void;
   onNavigateView?: (view: any) => void;
+  /** What the person said they mostly use Renim for (from the welcome); reorders quick actions. */
+  useCases?: string[];
 }
 
 const priorityColor = (p?: string): 'error' | 'warning' | 'default' => {
@@ -61,7 +63,8 @@ export const TodayView: React.FC<TodayViewProps> = ({
   setShowEventModal,
   todayEvents,
   onOpenFocusModal,
-  onNavigateView
+  onNavigateView,
+  useCases = []
 }) => {
   const [checklistDismissed, setChecklistDismissed] = useState<boolean>(() => {
     try {
@@ -86,6 +89,16 @@ export const TodayView: React.FC<TodayViewProps> = ({
         { icon: 'notifications_active', accent: 'amber', title: 'Notifications', hint: 'Browser and email alerts', onClick: () => onNavigateView('view-settings') },
       ]
     : [];
+  // Gently reorder quick actions to match the person's main use (stable for everything else).
+  const USE_CASE_FIRST: Record<string, string> = { meetings: 'Calendar', sales: 'Calendar', studying: 'Focus session', team: 'Task board', personal: 'Task board' };
+  const preferred = useCases.map((u) => USE_CASE_FIRST[u]).filter(Boolean);
+  if (preferred.length) {
+    const rank = (title: string) => {
+      const i = preferred.indexOf(title);
+      return i === -1 ? preferred.length : i;
+    };
+    quickActions.sort((a, b) => rank(a.title) - rank(b.title));
+  }
 
   return (
     <div id="view-today" className={`view-container ${isActive ? 'active' : ''}`}>

@@ -260,6 +260,10 @@ def ensure_tables(pool: ConnectionPool) -> None:
                     ALTER TABLE IF EXISTS public.app_users ADD COLUMN IF NOT EXISTS totp_secret text NOT NULL DEFAULT '';
                     ALTER TABLE IF EXISTS public.app_users ADD COLUMN IF NOT EXISTS totp_enabled boolean NOT NULL DEFAULT false;
                     ALTER TABLE IF EXISTS public.app_users ADD COLUMN IF NOT EXISTS token_version int NOT NULL DEFAULT 1;
+                    -- Email verification: existing accounts are backfilled as verified (DEFAULT true on first add),
+                    -- then the default flips to false so only new signups are asked to confirm.
+                    ALTER TABLE IF EXISTS public.app_users ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT true;
+                    ALTER TABLE IF EXISTS public.app_users ALTER COLUMN email_verified SET DEFAULT false;
 
                     -- Multi-Tenant Org Isolation Columns
                     ALTER TABLE IF EXISTS public.tasks ADD COLUMN IF NOT EXISTS org_id text NOT NULL DEFAULT 'personal';
@@ -308,6 +312,37 @@ def ensure_tables(pool: ConnectionPool) -> None:
                     ALTER TABLE public.shared_links ADD COLUMN IF NOT EXISTS revoked boolean NOT NULL DEFAULT false;
                     """
                 )
+                cur.execute(
+                    """
+                    -- External calendar sync (Google / Microsoft). Tokens may be Fernet-encrypted ("enc:" prefix).
+                    CREATE TABLE IF NOT EXISTS public.calendar_connections (
+                        user_email text NOT NULL,
+                        provider text NOT NULL,
+                        access_token text NOT NULL DEFAULT '',
+                        refresh_token text NOT NULL DEFAULT '',
+                        expires_at timestamptz,
+                        account_email text NOT NULL DEFAULT '',
+                        connected_at timestamptz DEFAULT now(),
+                        last_synced_at timestamptz,
+                        PRIMARY KEY (user_email, provider)
+                    );
+                    CREATE TABLE IF NOT EXISTS public.external_calendar_events (
+                        user_email text NOT NULL,
+                        provider text NOT NULL,
+                        external_id text NOT NULL,
+                        title text NOT NULL DEFAULT '',
+                        description text NOT NULL DEFAULT '',
+                        location text NOT NULL DEFAULT '',
+                        start_at timestamptz NOT NULL,
+                        end_at timestamptz,
+                        all_day boolean NOT NULL DEFAULT false,
+                        html_link text NOT NULL DEFAULT '',
+                        updated_at timestamptz DEFAULT now(),
+                        PRIMARY KEY (user_email, provider, external_id)
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_ext_cal_user_start ON public.external_calendar_events (user_email, start_at);
+                    """
+                )
                 # Super Admin is seeded only from environment variables, never from source code.
                 sa_email = os.getenv("SUPERADMIN_EMAIL", "").strip().lower()
                 sa_password = os.getenv("SUPERADMIN_PASSWORD", "")
@@ -326,6 +361,47 @@ def ensure_tables(pool: ConnectionPool) -> None:
                         )
     except Exception as e:
         print("Warning ensuring database tables:", e)
+    ensure_embeddings_table(pool)
+
+
+EMBEDDING_DIM = 1536
+
+
+def ensure_embeddings_table(pool: ConnectionPool) -> None:
+    """Semantic search storage. Uses pgvector when available, else a REAL[] column."""
+    use_vector = False
+    try:
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                use_vector = True
+    except Exception as e:
+        print("Info: pgvector unavailable, using REAL[] embeddings:", e)
+    col_type = f"vector({EMBEDDING_DIM})" if use_vector else "REAL[]"
+    try:
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS public.workspace_embeddings (
+                        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_email text NOT NULL DEFAULT '',
+                        org_id text NOT NULL DEFAULT '',
+                        source_type text NOT NULL,
+                        source_id text NOT NULL,
+                        chunk_index int NOT NULL DEFAULT 0,
+                        content_hash text NOT NULL DEFAULT '',
+                        chunk_text text NOT NULL DEFAULT '',
+                        embedding {col_type},
+                        updated_at timestamptz DEFAULT now(),
+                        UNIQUE (source_type, source_id, chunk_index)
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_wemb_user ON public.workspace_embeddings (LOWER(user_email));
+                    CREATE INDEX IF NOT EXISTS ix_wemb_org ON public.workspace_embeddings (org_id);
+                    """
+                )
+    except Exception as e:
+        print("Warning ensuring workspace_embeddings table:", e)
 
 
 def log_audit(

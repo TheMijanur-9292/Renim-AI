@@ -1,4 +1,5 @@
 ---
+import SentryLoader from '../components/SentryLoader.astro';
 /**
  * Renim AI — Sign in (redesign). Responsive: photo panel hides below 960px.
  */
@@ -84,6 +85,7 @@
     @media (max-width:520px){.top{padding:16px}.p{font-size:15px}}
     @media (prefers-reduced-motion:reduce){*{animation:none !important}.u1{opacity:1}}
   </style>
+  <SentryLoader />
 </head>
 <body>
 <div class="shell">
@@ -121,6 +123,7 @@
             <button type="submit" id="signin-btn" class="btn-main"><span id="signin-btn-text">Sign in</span><span class="ms" aria-hidden="true">arrow_forward</span></button>
           </form>
           <p style="margin:24px 0 0;text-align:center;font-size:14px;color:#475569">New to Renim AI? <a href="/signup" style="font-weight:700">Create a free account</a></p>
+          <p style="margin:12px 0 0;text-align:center;font-size:13px;color:#64748b"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p>
         </section>
 
         <!-- Forgot -->

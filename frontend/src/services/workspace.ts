@@ -665,6 +665,74 @@ export class DatabaseClient {
   }
 }
 
+// ================= LANGUAGE PREFERENCES (speech + AI response) =================
+
+export type SpeechLang = 'en-IN' | 'en-US' | 'bn-IN' | 'bn-BD' | 'hi-IN';
+export type AiLang = 'same' | 'en' | 'bn' | 'hi';
+export interface LangPrefs { speechLang: SpeechLang; aiLang: AiLang }
+
+export const LANG_PREFS_KEY = 'renim_lang_prefs';
+export const DEFAULT_LANG_PREFS: LangPrefs = { speechLang: 'en-US', aiLang: 'same' };
+export const SPEECH_LANG_OPTIONS: { value: SpeechLang; label: string }[] = [
+  { value: 'en-IN', label: 'English (India)' },
+  { value: 'en-US', label: 'English (US)' },
+  { value: 'bn-IN', label: 'বাংলা (Bangla)' },
+  { value: 'bn-BD', label: 'বাংলা (Bangladesh)' },
+  { value: 'hi-IN', label: 'हिन्दी (Hindi)' }
+];
+export const AI_LANG_OPTIONS: { value: AiLang; label: string }[] = [
+  { value: 'same', label: 'Same as speech' },
+  { value: 'en', label: 'English' },
+  { value: 'bn', label: 'Bangla (বাংলা)' },
+  { value: 'hi', label: 'Hindi (हिन्दी)' }
+];
+const LANG_NAMES: Record<string, string> = { en: 'English', bn: 'Bangla (Bengali)', hi: 'Hindi' };
+
+export function getLangPrefs(): LangPrefs {
+  if (typeof window === 'undefined') return { ...DEFAULT_LANG_PREFS };
+  try {
+    const raw = JSON.parse(localStorage.getItem(LANG_PREFS_KEY) || '{}');
+    const speechLang = SPEECH_LANG_OPTIONS.some(o => o.value === raw.speechLang) ? raw.speechLang : DEFAULT_LANG_PREFS.speechLang;
+    const aiLang = AI_LANG_OPTIONS.some(o => o.value === raw.aiLang) ? raw.aiLang : DEFAULT_LANG_PREFS.aiLang;
+    return { speechLang, aiLang };
+  } catch {
+    return { ...DEFAULT_LANG_PREFS };
+  }
+}
+
+export function setLangPrefs(patch: Partial<LangPrefs>): LangPrefs {
+  const next = { ...getLangPrefs(), ...patch };
+  try {
+    localStorage.setItem(LANG_PREFS_KEY, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent('renim-lang-prefs', { detail: next }));
+  } catch {}
+  return next;
+}
+
+/** BCP-47 tag for Web Speech recognition. */
+export function getSpeechLang(): SpeechLang {
+  return getLangPrefs().speechLang;
+}
+
+/** Short code ('en' | 'bn' | 'hi') for AI responses; resolves "Same as speech". */
+export function getAiResponseLang(): 'en' | 'bn' | 'hi' {
+  const p = getLangPrefs();
+  const code = p.aiLang === 'same' ? p.speechLang.slice(0, 2) : p.aiLang;
+  return (code === 'bn' || code === 'hi') ? code : 'en';
+}
+
+/** Prompt suffix; empty for English so existing behaviour is unchanged. */
+export function aiLanguageInstruction(json = false): string {
+  const code = getAiResponseLang();
+  if (code === 'en') return '';
+  const name = LANG_NAMES[code];
+  return json
+    ? `
+Respond in ${name}: write all text values in ${name}, but keep every JSON key and enum value (e.g. "High", "task") exactly in English.`
+    : `
+Respond in ${name}.`;
+}
+
 // ================= 2. AI GATEWAY ENGINE (FASTAPI ZERO-CORS PROXY + DIRECT FALLBACK) =================
 
 export class AIEngine {
@@ -762,7 +830,7 @@ Analyze the provided meeting dialogue and output a clean, valid JSON object stri
     }
   ]
 }
-Return ONLY valid raw JSON without markdown fences.`;
+Return ONLY valid raw JSON without markdown fences.${aiLanguageInstruction(true)}`;
 
     const raw = await this.callLLM([
       { role: 'system', content: systemPrompt },
@@ -818,9 +886,10 @@ Return ONLY valid raw JSON without markdown fences.`;
         break;
     }
 
+    const isTranslate = command === 'translate_bn' || command === 'translate_en';
     return await this.callLLM(
       [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: systemPrompt + (isTranslate ? '' : aiLanguageInstruction()) },
         { role: 'user', content: userPrompt }
       ],
       0.4
@@ -837,7 +906,7 @@ Include:
 2. Today's Key Schedule (High-impact summary of events)
 3. Top 3 Priority Focus Tasks
 4. Smart Recommendation / Productivity Tip
-Keep it energetic, clear, and professional.`;
+Keep it energetic, clear, and professional.${aiLanguageInstruction()}`;
 
     const todayDateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -871,7 +940,7 @@ ${recentNotes.length > 0 ? recentNotes.slice(0, 3).map(n => `- ${n.title}`).join
     const systemPrompt = `You are Renim AI Copilot, a powerful and intelligent personal workspace assistant. You have full awareness of the user's workspace including their meetings, notes, tasks, and calendar events.
 Answer the user's query accurately, referencing relevant items from their workspace context.
 IMPORTANT: You are exclusively Renim AI Copilot. Do NOT mention "2COMS" or any "group portal".
-If specific information is not in the context, be helpful, concise, and state what is available.`;
+If specific information is not in the context, be helpful, concise, and state what is available.${aiLanguageInstruction()}`;
 
     const wantsSearch = /search\s*(web|browser|internet|online)|look\s*up/i.test(userQuery) || userQuery.toLowerCase().includes("search");
     let searchContext = "";
@@ -932,7 +1001,7 @@ Output valid raw JSON with this exact structure:
   "priority": "High" | "Medium" | "Low",
   "date_or_deadline": "YYYY-MM-DD or null if not mentioned",
   "time": "HH:MM or null if not mentioned"
-}`;
+}${aiLanguageInstruction(true)}`;
 
     const raw = await this.callLLM(
       [
@@ -1080,7 +1149,7 @@ export class AudioRecorderService {
     this.recognition = new SpeechRec();
     this.recognition.continuous = true;
     this.recognition.interimResults = true;
-    this.recognition.lang = 'en-US';
+    this.recognition.lang = getSpeechLang();
 
     this.recognition.onresult = (event: any) => {
       let interim = '';
