@@ -1,3 +1,5 @@
+import { ThemeProvider } from '@mui/material/styles';
+import { makeRenimTheme } from '../theme/renimTheme';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   DatabaseClient,
@@ -1280,7 +1282,7 @@ export default function WorkspaceApp() {
       });
       if (res.ok) {
         const data = await res.json();
-        const savedMeeting = await db.createMeeting({
+        const savedMeeting = await db.saveMeeting({
           title: file.name.replace(/\.[^/.]+$/, ''),
           duration_seconds: data.duration_seconds || 80,
           word_count: data.word_count || 50,
@@ -1684,7 +1686,7 @@ export default function WorkspaceApp() {
         md += `### ${m.title || 'Meeting'}\n`;
         md += `*Date: ${m.created_at || 'N/A'}*\n\n`;
         if (m.summary) md += `**Summary:**\n${m.summary}\n\n`;
-        if (m.transcript) md += `**Transcript:**\n${m.transcript}\n\n`;
+        if (m.raw_transcript) md += `**Transcript:**\n${m.raw_transcript}\n\n`;
       });
 
       const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
@@ -1733,10 +1735,12 @@ export default function WorkspaceApp() {
   const totalRenderedCells = firstDayIndex + totalDays;
   const nextTrailingDays = (7 - (totalRenderedCells % 7)) % 7;
   const selectedDayEvents = events.filter(e => e.event_date === calSelectedDateStr);
+  const muiTheme = React.useMemo(() => makeRenimTheme(themeMode === 'light' ? 'light' : 'dark'), [themeMode]);
 
 
 
   return (
+    <ThemeProvider theme={muiTheme}>
     <div id="app" className={`app-layout ${themeMode === 'light' ? 'theme-light' : 'theme-dark'}`}>
       <Sidebar
         activeView={activeView}
@@ -1769,6 +1773,7 @@ export default function WorkspaceApp() {
       )}
 
       <div className="main-viewport">
+        <div className="renim-aurora" aria-hidden="true"><span className="a1" /><span className="a2" /></div>
         <Header
           activeView={activeView}
           themeMode={themeMode}
@@ -1804,6 +1809,7 @@ export default function WorkspaceApp() {
 
         <TodayView
           isActive={activeView === 'view-today'}
+          userName={userName}
           isVoiceMemoActive={isVoiceMemoActive}
           handleVoiceMemoToggle={handleVoiceMemoToggle}
           voiceMemoStatus={voiceMemoStatus}
@@ -2256,5 +2262,6 @@ export default function WorkspaceApp() {
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} />
     </div>
+    </ThemeProvider>
   );
 }

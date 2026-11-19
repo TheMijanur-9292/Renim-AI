@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { Box, Button, ButtonBase, Card, Collapse, Divider, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import { SMART_NOTE_TEMPLATES } from '../../services/powerups';
+import { EmptyState, Icon, PageContainer, riseSx } from '../ui';
 
 export interface NotesViewProps {
   isActive: boolean;
@@ -41,6 +43,93 @@ export interface NotesViewProps {
   onToggleTeamVisibility?: () => void;
   hasActiveOrg?: boolean;
 }
+
+/** Compact toolbar icon button with tooltip + aria-label. */
+const ToolBtn: React.FC<{ label: string; icon: string; onClick: () => void; active?: boolean; danger?: boolean; className?: string }> = ({
+  label, icon, onClick, active, danger, className,
+}) => (
+  <Tooltip title={label}>
+    <IconButton
+      type="button"
+      aria-label={label}
+      aria-pressed={active}
+      className={className}
+      onClick={onClick}
+      sx={{
+        width: { xs: 40, md: 34 }, height: { xs: 40, md: 34 }, borderRadius: '10px', flex: 'none',
+        color: danger ? '#ffffff' : active ? 'secondary.main' : 'text.secondary',
+        bgcolor: danger ? 'error.main' : active ? 'action.selected' : 'transparent',
+        '&:hover': { bgcolor: danger ? 'error.dark' : 'action.hover', color: danger ? '#ffffff' : 'text.primary' },
+      }}
+    >
+      <Icon name={icon} size={19} />
+    </IconButton>
+  </Tooltip>
+);
+
+const ToolDivider = () => <Divider orientation="vertical" flexItem sx={{ mx: 0.5, my: 0.75 }} />;
+
+const selectSx = {
+  height: { xs: 40, md: 34 },
+  px: 1,
+  borderRadius: '10px',
+  border: '1px solid',
+  borderColor: 'divider',
+  bgcolor: 'background.paper',
+  color: 'text.primary',
+  font: 'inherit',
+  fontSize: 12.5,
+  fontWeight: 600,
+  cursor: 'pointer',
+  flex: 'none',
+  '&:focus-visible': { outline: '2px solid', outlineColor: 'secondary.main' },
+};
+
+const colorWrapSx = {
+  position: 'relative' as const,
+  width: { xs: 40, md: 34 },
+  height: { xs: 40, md: 34 },
+  borderRadius: '10px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'text.secondary',
+  cursor: 'pointer',
+  flex: 'none',
+  '&:hover': { bgcolor: 'action.hover' },
+  '& input': { position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' },
+};
+
+const AI_ACTIONS: { action: string; icon: string; label: string }[] = [
+  { action: 'summarize', icon: 'summarize', label: 'Summarize' },
+  { action: 'action_items', icon: 'checklist', label: 'Pull out action items' },
+  { action: 'professional', icon: 'badge', label: 'Make it professional' },
+  { action: 'fix_grammar', icon: 'spellcheck', label: 'Fix grammar and style' },
+  { action: 'expand', icon: 'lightbulb', label: 'Suggest next steps' },
+  { action: 'translate_bn', icon: 'translate', label: 'Translate to Bengali (বাংলা)' },
+  { action: 'translate_en', icon: 'language', label: 'Translate to English' },
+  { action: 'tone_clevel', icon: 'workspace_premium', label: 'Short brief for leaders' },
+  { action: 'tone_pitch', icon: 'campaign', label: 'Persuasive tone' },
+  { action: 'polish_voice_memo', icon: 'record_voice_over', label: 'Clean up dictation' },
+];
+
+const aiBtnSx = {
+  justifyContent: 'flex-start',
+  gap: 1.25,
+  width: '100%',
+  minHeight: 44,
+  px: 1.5,
+  borderRadius: '12px',
+  textAlign: 'left' as const,
+  fontSize: 13.5,
+  fontWeight: 600,
+  color: 'text.primary',
+  transition: 'background-color .2s ease, transform .2s ease',
+  '& .ai-ico': { color: 'secondary.main' },
+  '&:hover': { bgcolor: 'action.hover', transform: 'translateX(3px)' },
+  '&:focus-visible': { outline: '2px solid', outlineColor: 'secondary.main' },
+  '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
+};
 
 export const NotesView: React.FC<NotesViewProps> = ({
   isActive,
@@ -86,433 +175,441 @@ export const NotesView: React.FC<NotesViewProps> = ({
 
   return (
     <div id="view-notes" className={`view-container ${isActive ? 'active' : ''}`}>
-      <div className="notes-layout">
-        {/* Left: Notes List */}
-        <div className="notes-list-pane">
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-            <button
-              className="mui-btn mui-btn-primary mui-btn-sm"
-              id="btn-new-note"
-              style={{ flex: 1 }}
-              onClick={handleNewNote}
-            >
-              <span className="material-symbols-rounded icon-sm">add</span>
-              <span>New Note</span>
-            </button>
-            <button
-              className={`mui-btn mui-btn-sm ${showTemplates ? 'mui-btn-primary' : 'mui-btn-outlined'}`}
-              title="1-Click Smart Note Templates"
-              onClick={() => setShowTemplates((v) => !v)}
-            >
-              <span className="material-symbols-rounded icon-sm">dashboard_customize</span>
-            </button>
-          </div>
-          {showTemplates && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '10px', padding: '8px', borderRadius: '8px', border: '1px solid var(--mui-border)', background: 'var(--mui-bg-paper)' }}>
-              <span className="muted-sm" style={{ fontSize: '11px', fontWeight: 700, marginBottom: '2px' }}>1-CLICK TEMPLATES</span>
-              {SMART_NOTE_TEMPLATES.map((tpl) => (
-                <button
-                  key={tpl.id}
-                  className="mui-btn mui-btn-outlined mui-btn-sm"
-                  style={{ justifyContent: 'flex-start', fontSize: '12px', padding: '5px 8px' }}
-                  onClick={() => {
-                    handleNewNote();
-                    setTimeout(() => {
-                      setNoteTitle(tpl.title);
-                      setNoteContent(tpl.content);
-                      if (noteEditorRef.current) {
-                        noteEditorRef.current.innerHTML = tpl.content;
-                      }
-                      triggerNoteSave();
-                    }, 30);
-                    setShowTemplates(false);
-                  }}
-                >
-                  <span className="material-symbols-rounded icon-sm" style={{ fontSize: '15px' }}>{tpl.icon}</span>
-                  <span>{tpl.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <div id="notes-list-container">
-            {filteredNotes.length === 0 ? (
-              <p className="user-status">No notes yet. Click New Note to begin.</p>
-            ) : (
-              filteredNotes.map(n => (
-                <div
-                  key={n.id}
-                  className={`note-item-card ${activeNoteId === n.id ? 'active' : ''}`}
-                  onClick={() => selectNote(n)}
-                  style={{ marginBottom: '8px' }}
-                >
-                  <div className="note-item-title">{n.title || 'Untitled Note'}</div>
-                  <div className="note-item-preview">{stripHtmlPreview(n.content || '') || 'Empty note...'}</div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Center: Note Editor */}
-        <div className="note-editor-pane">
-          <input
-            type="text"
-            id="note-title-input"
-            className="note-title-input"
-            placeholder="Note Title..."
-            value={noteTitle}
-            onChange={e => {
-              const val = e.target.value;
-              setNoteTitle(val);
-              const currentHtml = noteEditorRef.current ? noteEditorRef.current.innerHTML : noteContent;
-              triggerNoteSave(val, currentHtml);
-            }}
-          />
-
-          {/* Rich Formatting Toolbar */}
-          <div className="rte-toolbar" role="toolbar" aria-label="Note formatting toolbar">
-            {/* Undo / Redo */}
-            <button type="button" className="rte-btn" title="Undo (Ctrl+Z)" onClick={() => execEditorCmd('undo')}>
-              <span className="material-symbols-rounded">undo</span>
-            </button>
-            <button type="button" className="rte-btn" title="Redo (Ctrl+Y)" onClick={() => execEditorCmd('redo')}>
-              <span className="material-symbols-rounded">redo</span>
-            </button>
-
-            <span className="rte-divider" />
-
-            {/* Bold / Italic / Underline / Strikethrough */}
-            <button type="button" className="rte-btn" title="Bold (Ctrl+B)" onClick={() => execEditorCmd('bold')}>
-              <span className="material-symbols-rounded">format_bold</span>
-            </button>
-            <button type="button" className="rte-btn" title="Italic (Ctrl+I)" onClick={() => execEditorCmd('italic')}>
-              <span className="material-symbols-rounded">format_italic</span>
-            </button>
-            <button type="button" className="rte-btn" title="Underline (Ctrl+U)" onClick={() => execEditorCmd('underline')}>
-              <span className="material-symbols-rounded">format_underlined</span>
-            </button>
-            <button type="button" className="rte-btn" title="Strikethrough" onClick={() => execEditorCmd('strikeThrough')}>
-              <span className="material-symbols-rounded">strikethrough_s</span>
-            </button>
-
-            <span className="rte-divider" />
-
-            {/* Font Family */}
-            <select
-              className="rte-select"
-              title="Font Family"
-              defaultValue="Inter"
-              onChange={e => execEditorCmd('fontName', e.target.value)}
-            >
-              <option value="Inter">Font</option>
-              <option value="Inter">Inter Sans</option>
-              <option value="Plus Jakarta Sans">Jakarta Sans</option>
-              <option value="JetBrains Mono">JetBrains Mono</option>
-              <option value="Georgia">Serif</option>
-            </select>
-
-            {/* Font Size */}
-            <select
-              className="rte-select"
-              title="Font Size"
-              defaultValue="3"
-              onChange={e => execEditorCmd('fontSize', e.target.value)}
-            >
-              <option value="1">8</option>
-              <option value="2">10</option>
-              <option value="3">12</option>
-              <option value="4">14</option>
-              <option value="5">18</option>
-              <option value="6">24</option>
-            </select>
-
-            {/* Line Spacing & Block Style */}
-            <select
-              className="rte-select"
-              title="Line Spacing & Paragraph Style"
-              value={noteLineSpacing}
-              onChange={e => {
-                const val = e.target.value;
-                if (val.startsWith('H') || val === 'P') {
-                  execEditorCmd('formatBlock', val);
-                } else {
-                  setNoteLineSpacing(val);
-                }
-              }}
-            >
-              <option value="1.2">(1.2) Tight</option>
-              <option value="1.65">(1.5) Normal</option>
-              <option value="2.0">(2.0) Relaxed</option>
-              <option value="H1">Heading 1</option>
-              <option value="H2">Heading 2</option>
-              <option value="H3">Heading 3</option>
-              <option value="P">Paragraph</option>
-            </select>
-
-            <span className="rte-divider" />
-
-            {/* Alignment */}
-            <button type="button" className="rte-btn" title="Align Left" onClick={() => execEditorCmd('justifyLeft')}>
-              <span className="material-symbols-rounded">format_align_left</span>
-            </button>
-            <button type="button" className="rte-btn" title="Align Center" onClick={() => execEditorCmd('justifyCenter')}>
-              <span className="material-symbols-rounded">format_align_center</span>
-            </button>
-
-            {/* Lists & Indent */}
-            <button type="button" className="rte-btn" title="Bulleted List" onClick={() => execEditorCmd('insertUnorderedList')}>
-              <span className="material-symbols-rounded">format_list_bulleted</span>
-            </button>
-            <button type="button" className="rte-btn" title="Numbered List" onClick={() => execEditorCmd('insertOrderedList')}>
-              <span className="material-symbols-rounded">format_list_numbered</span>
-            </button>
-            <button type="button" className="rte-btn" title="Indent" onClick={() => execEditorCmd('indent')}>
-              <span className="material-symbols-rounded">format_indent_increase</span>
-            </button>
-            <button type="button" className="rte-btn" title="Outdent" onClick={() => execEditorCmd('outdent')}>
-              <span className="material-symbols-rounded">format_indent_decrease</span>
-            </button>
-
-            <span className="rte-divider" />
-
-            {/* Superscript / Subscript */}
-            <button type="button" className="rte-btn" title="Superscript (x²)" onClick={() => execEditorCmd('superscript')}>
-              <span className="material-symbols-rounded">superscript</span>
-            </button>
-            <button type="button" className="rte-btn" title="Subscript (x₂)" onClick={() => execEditorCmd('subscript')}>
-              <span className="material-symbols-rounded">subscript</span>
-            </button>
-
-            {/* Text Color & Highlight Color */}
-            <label className="rte-color-wrap" title="Text Color">
-              <span className="material-symbols-rounded" style={{ fontSize: '18px', color: 'var(--mui-text-secondary)' }}>
-                format_color_text
-              </span>
-              <input
-                type="color"
-                className="rte-color-input"
-                defaultValue="#818cf8"
-                onChange={e => execEditorCmd('foreColor', e.target.value)}
-              />
-            </label>
-
-            <label className="rte-color-wrap" title="Highlight Background">
-              <span className="material-symbols-rounded" style={{ fontSize: '18px', color: 'var(--mui-text-secondary)' }}>
-                ink_highlighter
-              </span>
-              <input
-                type="color"
-                className="rte-color-input"
-                defaultValue="#fef08a"
-                onChange={e => execEditorCmd('hiliteColor', e.target.value)}
-              />
-            </label>
-
-            {/* Clear Formatting */}
-            <button type="button" className="rte-btn" title="Clear Formatting" onClick={() => execEditorCmd('removeFormat')}>
-              <span className="material-symbols-rounded">ink_eraser</span>
-            </button>
-
-            <span className="rte-divider" />
-
-            {/* Link, Table, Horizontal Rule, Image, Code Block, Spellcheck */}
-            <button type="button" className="rte-btn" title="Insert Link" onClick={handleInsertLink}>
-              <span className="material-symbols-rounded">link</span>
-            </button>
-            <button type="button" className="rte-btn" title="Insert Table" onClick={handleInsertTable}>
-              <span className="material-symbols-rounded">table_chart</span>
-            </button>
-            <button type="button" className="rte-btn" title="Insert Horizontal Divider" onClick={() => execEditorCmd('insertHorizontalRule')}>
-              <span className="material-symbols-rounded">horizontal_rule</span>
-            </button>
-            <button type="button" className="rte-btn" title="Insert Image" onClick={handleInsertImage}>
-              <span className="material-symbols-rounded">add_photo_alternate</span>
-            </button>
-            <button type="button" className="rte-btn" title="Insert Code Block" onClick={handleInsertCodeBlock}>
-              <span className="material-symbols-rounded">code</span>
-            </button>
-            <button
-              type="button"
-              className={`rte-btn ${noteSpellCheck ? 'active' : ''}`}
-              title="Toggle Spellcheck"
-              onClick={() => setNoteSpellCheck(!noteSpellCheck)}
-            >
-              <span className="material-symbols-rounded">spellcheck</span>
-            </button>
-
-            <span className="rte-divider" />
-
-            {/* Voice Dictation (Web Speech API) */}
-            <button
-              type="button"
-              className={`rte-btn ${isVoiceDictating ? 'voice-dictating-pulse' : ''}`}
-              title={isVoiceDictating ? 'Stop Voice Dictation' : 'Start Live Voice Dictation'}
-              onClick={toggleVoiceDictation}
-              style={isVoiceDictating ? { background: '#ef4444', color: '#ffffff' } : {}}
-            >
-              <span className="material-symbols-rounded">
-                {isVoiceDictating ? 'mic_off' : 'mic'}
-              </span>
-            </button>
-            <select
-              className="rte-select"
-              value={voiceDictationLang}
-              onChange={e => setVoiceDictationLang(e.target.value as any)}
-              title="Voice Dictation Language"
-              style={{ fontSize: '11px', height: '26px', padding: '0 4px' }}
-            >
-              <option value="bn-BD">বাংলা (BN)</option>
-              <option value="en-US">English (US)</option>
-            </select>
-          </div>
-
-          {/* Rich ContentEditable Note Surface */}
-          <div
-            ref={noteEditorRef}
-            id="note-content-input"
-            className="note-rich-editor"
-            contentEditable
-            suppressContentEditableWarning
-            spellCheck={noteSpellCheck}
-            style={{ lineHeight: noteLineSpacing }}
-            data-placeholder="Start writing, or paste formatted notes, lists, tables, and code..."
-            onInput={e => {
-              const html = e.currentTarget.innerHTML;
-              setNoteContent(html);
-              triggerNoteSave(noteTitle, html);
-            }}
-            onPaste={handleNotePaste}
-          />
-
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginTop: '12px',
-              borderTop: '1px solid var(--mui-border)',
-              paddingTop: '12px',
+      <PageContainer>
+        <Box
+          sx={{
+            display: 'grid',
+            gap: { xs: 2, md: 2.5 },
+            gridTemplateColumns: {
+              xs: '1fr',
+              md: '260px minmax(0, 1fr)',
+              lg: '280px minmax(0, 1fr) 260px',
+              xl: '300px minmax(0, 1fr) 280px',
+            },
+            alignItems: 'stretch',
+          }}
+        >
+          {/* Notes list */}
+          <Card
+            sx={{
+              p: 1.5, display: 'flex', flexDirection: 'column', minHeight: 0,
+              height: { md: 'calc(100dvh - 140px)' }, maxHeight: { xs: 380, md: 'none' }, minWidth: 0,
+              position: { md: 'sticky' }, top: { md: 16 },
+              ...(riseSx(0) as object),
             }}
           >
-            <span className="user-status" id="note-save-status">{noteSaveStatus}</span>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                className="mui-btn mui-btn-outlined mui-btn-sm"
-                id="btn-delete-note"
-                onClick={handleDeleteNote}
+            <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+              <Button
+                variant="contained"
+                color="primary"
+                id="btn-new-note"
+                onClick={handleNewNote}
+                startIcon={<Icon name="add" size={18} />}
+                sx={{ flex: 1, minHeight: 44 }}
               >
-                <span className="material-symbols-rounded icon-sm">delete</span>
-              </button>
-              <button
-                className="mui-btn mui-btn-primary mui-btn-sm"
-                id="btn-manual-save-note"
-                onClick={() => {
-                  if (noteSaveTimerRef.current) clearTimeout(noteSaveTimerRef.current);
-                  const html = noteEditorRef.current ? noteEditorRef.current.innerHTML : noteContent;
-                  persistNoteNow(noteTitle, html, true);
+                New note
+              </Button>
+              <Tooltip title="Start from a template">
+                <IconButton
+                  aria-label="Start from a template"
+                  aria-expanded={showTemplates}
+                  onClick={() => setShowTemplates((v) => !v)}
+                  sx={{
+                    width: 44, height: 44, borderRadius: '12px', border: '1px solid',
+                    borderColor: showTemplates ? 'secondary.main' : 'divider',
+                    color: showTemplates ? 'secondary.main' : 'text.secondary',
+                    bgcolor: showTemplates ? 'action.selected' : 'transparent',
+                  }}
+                >
+                  <Icon name="dashboard_customize" size={20} />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+
+            <Collapse in={showTemplates} unmountOnExit>
+              <Box sx={{ mb: 1, p: 1, borderRadius: '14px', border: '1px solid', borderColor: 'divider', bgcolor: 'action.hover' }}>
+                <Typography variant="overline" color="text.secondary" sx={{ px: 0.75, display: 'block' }}>
+                  Templates
+                </Typography>
+                <Stack spacing={0.25}>
+                  {SMART_NOTE_TEMPLATES.map((tpl) => (
+                    <ButtonBase
+                      key={tpl.id}
+                      onClick={() => {
+                        handleNewNote();
+                        setTimeout(() => {
+                          setNoteTitle(tpl.title);
+                          setNoteContent(tpl.content);
+                          if (noteEditorRef.current) {
+                            noteEditorRef.current.innerHTML = tpl.content;
+                          }
+                          (triggerNoteSave as (...args: any[]) => void)();
+                        }, 30);
+                        setShowTemplates(false);
+                      }}
+                      sx={{ ...aiBtnSx, minHeight: 40, fontSize: 13 }}
+                    >
+                      <Icon name={tpl.icon} size={18} sx={{ color: 'secondary.main' }} />
+                      <span>{tpl.name}</span>
+                    </ButtonBase>
+                  ))}
+                </Stack>
+              </Box>
+            </Collapse>
+
+            <Box id="notes-list-container" sx={{ flex: 1, minHeight: 0, overflowY: 'auto', mx: -0.5, px: 0.5 }}>
+              {filteredNotes.length === 0 ? (
+                <EmptyState icon="sticky_note_2" title="No notes yet" description="Select New note to start writing." />
+              ) : (
+                <Stack spacing={0.75}>
+                  {filteredNotes.map((n, i) => {
+                    const selected = activeNoteId === n.id;
+                    return (
+                      <ButtonBase
+                        key={n.id}
+                        onClick={() => selectNote(n)}
+                        aria-current={selected ? 'true' : undefined}
+                        sx={{
+                          display: 'block', width: '100%', textAlign: 'left', p: 1.5, borderRadius: '14px',
+                          border: '1px solid', borderColor: selected ? 'secondary.main' : 'transparent',
+                          bgcolor: selected ? 'action.selected' : 'transparent',
+                          transition: 'background-color .2s ease, transform .2s ease, border-color .2s ease',
+                          '&:hover': { bgcolor: selected ? 'action.selected' : 'action.hover', transform: 'translateY(-1px)' },
+                          '&:focus-visible': { outline: '2px solid', outlineColor: 'secondary.main' },
+                          '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
+                          ...(riseSx(i + 1) as object),
+                        }}
+                      >
+                        <Typography variant="body2" noWrap sx={{ fontWeight: 700 }}>
+                          {n.title || 'Untitled Note'}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          component="div"
+                          sx={{ mt: 0.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.5 }}
+                        >
+                          {stripHtmlPreview(n.content || '') || 'Empty note...'}
+                        </Typography>
+                      </ButtonBase>
+                    );
+                  })}
+                </Stack>
+              )}
+            </Box>
+          </Card>
+
+          {/* Editor */}
+          <Card
+            sx={{
+              p: 0, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden',
+              height: { xs: 'auto', md: 'calc(100dvh - 140px)' }, minHeight: { xs: 520, md: 520 },
+              ...(riseSx(1) as object),
+            }}
+          >
+            <Box sx={{ px: { xs: 2, sm: 3 }, pt: { xs: 2, sm: 2.5 } }}>
+              <Box
+                component="input"
+                type="text"
+                id="note-title-input"
+                className="note-title-input"
+                aria-label="Note title"
+                placeholder="Untitled note"
+                value={noteTitle}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  const val = e.target.value;
+                  setNoteTitle(val);
+                  const currentHtml = noteEditorRef.current ? noteEditorRef.current.innerHTML : noteContent;
+                  triggerNoteSave(val, currentHtml);
                 }}
-              >
-                <span className="material-symbols-rounded icon-sm">save</span>
-                <span>Save</span>
-              </button>
-            </div>
-          </div>
-        </div>
+                sx={{
+                  width: '100%', minWidth: 0, fontSize: { xs: 22, sm: 26 }, fontWeight: 800, letterSpacing: '-0.02em',
+                  color: 'text.primary', bgcolor: 'transparent', border: 'none', outline: 'none', p: 0, mb: 1.5,
+                  '&::placeholder': { color: 'text.disabled' },
+                }}
+              />
+            </Box>
 
-        {/* Right: AI Writing Assistant */}
-        <div className="notes-ai-sidebar">
-          <h4 className="mui-card-title">
-            <span className="material-symbols-rounded">auto_awesome</span>
-            <span>AI Writing Assistant</span>
-          </h4>
-          <button className="ai-action-btn" onClick={() => handleNoteAI('summarize')}>
-            <span className="material-symbols-rounded icon-sm">summarize</span>
-            <span>Summarize Note</span>
-          </button>
-          <button className="ai-action-btn" onClick={() => handleNoteAI('action_items')}>
-            <span className="material-symbols-rounded icon-sm">checklist</span>
-            <span>Extract Action Items</span>
-          </button>
-          <button className="ai-action-btn" onClick={() => handleNoteAI('professional')}>
-            <span className="material-symbols-rounded icon-sm">badge</span>
-            <span>Make Professional</span>
-          </button>
-          <button className="ai-action-btn" onClick={() => handleNoteAI('fix_grammar')}>
-            <span className="material-symbols-rounded icon-sm">spellcheck</span>
-            <span>Fix Grammar & Style</span>
-          </button>
-          <button className="ai-action-btn" onClick={() => handleNoteAI('expand')}>
-            <span className="material-symbols-rounded icon-sm">lightbulb</span>
-            <span>Brainstorm Next Steps</span>
-          </button>
-          <button className="ai-action-btn" onClick={() => handleNoteAI('translate_bn')}>
-            <span className="material-symbols-rounded icon-sm">translate</span>
-            <span>Translate to Bengali (বাংলা)</span>
-          </button>
-          <button className="ai-action-btn" onClick={() => handleNoteAI('translate_en')}>
-            <span className="material-symbols-rounded icon-sm">language</span>
-            <span>Translate to English (US)</span>
-          </button>
-          <button className="ai-action-btn" onClick={() => handleNoteAI('tone_clevel')}>
-            <span className="material-symbols-rounded icon-sm">workspace_premium</span>
-            <span>C-Level Executive Brief</span>
-          </button>
-          <button className="ai-action-btn" onClick={() => handleNoteAI('tone_pitch')}>
-            <span className="material-symbols-rounded icon-sm">campaign</span>
-            <span>Pitch Deck / Client Tone</span>
-          </button>
-          <button className="ai-action-btn" onClick={() => handleNoteAI('polish_voice_memo')}>
-            <span className="material-symbols-rounded icon-sm">record_voice_over</span>
-            <span>Polish Spoken Dictation</span>
-          </button>
-          <button className="ai-action-btn" onClick={() => handleOpenEmailModal('note')}>
-            <span className="material-symbols-rounded icon-sm">forward_to_inbox</span>
-            <span>Draft Email / Outreach</span>
-          </button>
-
-          <div style={{ margin: '14px 0 8px 0', borderTop: '1px solid var(--mui-border)', paddingTop: '10px' }}>
-            <span className="nav-section-title" style={{ padding: 0, marginBottom: '8px', display: 'block' }}>Export & Share</span>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-              <button className="mui-btn mui-btn-outlined mui-btn-sm" onClick={handleExportPDF} title="Print or Save as PDF">
-                <span className="material-symbols-rounded icon-sm">picture_as_pdf</span>
-                <span>PDF</span>
-              </button>
-              <button className="mui-btn mui-btn-outlined mui-btn-sm" onClick={handleExportMarkdown} title="Download Markdown .md">
-                <span className="material-symbols-rounded icon-sm">download</span>
-                <span>Markdown</span>
-              </button>
-            </div>
-            <button
-              className="mui-btn mui-btn-outlined mui-btn-sm"
-              style={{ width: '100%', marginTop: '6px' }}
-              onClick={() => setShowShareModal(true)}
+            {/* Formatting toolbar */}
+            <Box
+              role="toolbar"
+              aria-label="Text formatting"
+              sx={{
+                display: 'flex', alignItems: 'center', gap: 0.25, flexWrap: { xs: 'nowrap', md: 'wrap' },
+                overflowX: { xs: 'auto', md: 'visible' }, mx: { xs: 1.5, sm: 2.5 }, px: 0.75, py: 0.5,
+                borderRadius: '14px', border: '1px solid', borderColor: 'divider', bgcolor: 'action.hover',
+                scrollbarWidth: 'thin',
+              }}
             >
-              <span className="material-symbols-rounded icon-sm">share</span>
-              <span>Share Preview</span>
-            </button>
-            {onPublicShareNote && (
-              <button
-                className="mui-btn mui-btn-primary mui-btn-sm"
-                style={{ width: '100%', marginTop: '6px' }}
-                onClick={onPublicShareNote}
+              <ToolBtn label="Undo (Ctrl+Z)" icon="undo" onClick={() => execEditorCmd('undo')} />
+              <ToolBtn label="Redo (Ctrl+Y)" icon="redo" onClick={() => execEditorCmd('redo')} />
+              <ToolDivider />
+              <ToolBtn label="Bold (Ctrl+B)" icon="format_bold" onClick={() => execEditorCmd('bold')} />
+              <ToolBtn label="Italic (Ctrl+I)" icon="format_italic" onClick={() => execEditorCmd('italic')} />
+              <ToolBtn label="Underline (Ctrl+U)" icon="format_underlined" onClick={() => execEditorCmd('underline')} />
+              <ToolBtn label="Strikethrough" icon="strikethrough_s" onClick={() => execEditorCmd('strikeThrough')} />
+              <ToolDivider />
+
+              <Box
+                component="select"
+                aria-label="Font"
+                title="Font"
+                defaultValue="Inter"
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => execEditorCmd('fontName', e.target.value)}
+                sx={selectSx}
               >
-                <span className="material-symbols-rounded icon-sm">public</span>
-                <span>Copy Public Link</span>
-              </button>
-            )}
-            {hasActiveOrg && onToggleTeamVisibility && (
-              <button
-                className="mui-btn mui-btn-outlined mui-btn-sm"
-                style={{ width: '100%', marginTop: '6px' }}
-                onClick={onToggleTeamVisibility}
+                <option value="Inter">Font</option>
+                <option value="Inter">Inter Sans</option>
+                <option value="Plus Jakarta Sans">Jakarta Sans</option>
+                <option value="JetBrains Mono">JetBrains Mono</option>
+                <option value="Georgia">Serif</option>
+              </Box>
+
+              <Box
+                component="select"
+                aria-label="Text size"
+                title="Text size"
+                defaultValue="3"
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => execEditorCmd('fontSize', e.target.value)}
+                sx={{ ...selectSx, ml: 0.5 }}
               >
-                <span className="material-symbols-rounded icon-sm">groups</span>
-                <span>Share to Team Feed</span>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+                <option value="1">8</option>
+                <option value="2">10</option>
+                <option value="3">12</option>
+                <option value="4">14</option>
+                <option value="5">18</option>
+                <option value="6">24</option>
+              </Box>
+
+              <Box
+                component="select"
+                aria-label="Line spacing and paragraph style"
+                title="Line spacing and paragraph style"
+                value={noteLineSpacing}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                  const val = e.target.value;
+                  if (val.startsWith('H') || val === 'P') {
+                    execEditorCmd('formatBlock', val);
+                  } else {
+                    setNoteLineSpacing(val);
+                  }
+                }}
+                sx={{ ...selectSx, ml: 0.5 }}
+              >
+                <option value="1.2">Tight spacing</option>
+                <option value="1.65">Normal spacing</option>
+                <option value="2.0">Relaxed spacing</option>
+                <option value="H1">Heading 1</option>
+                <option value="H2">Heading 2</option>
+                <option value="H3">Heading 3</option>
+                <option value="P">Paragraph</option>
+              </Box>
+              <ToolDivider />
+
+              <ToolBtn label="Align left" icon="format_align_left" onClick={() => execEditorCmd('justifyLeft')} />
+              <ToolBtn label="Align center" icon="format_align_center" onClick={() => execEditorCmd('justifyCenter')} />
+              <ToolBtn label="Bulleted list" icon="format_list_bulleted" onClick={() => execEditorCmd('insertUnorderedList')} />
+              <ToolBtn label="Numbered list" icon="format_list_numbered" onClick={() => execEditorCmd('insertOrderedList')} />
+              <ToolBtn label="Indent" icon="format_indent_increase" onClick={() => execEditorCmd('indent')} />
+              <ToolBtn label="Outdent" icon="format_indent_decrease" onClick={() => execEditorCmd('outdent')} />
+              <ToolDivider />
+
+              <ToolBtn label="Superscript" icon="superscript" onClick={() => execEditorCmd('superscript')} />
+              <ToolBtn label="Subscript" icon="subscript" onClick={() => execEditorCmd('subscript')} />
+
+              <Tooltip title="Text color">
+                <Box component="label" sx={colorWrapSx}>
+                  <Icon name="format_color_text" size={19} />
+                  <input
+                    type="color"
+                    aria-label="Text color"
+                    defaultValue="#818cf8"
+                    onChange={e => execEditorCmd('foreColor', e.target.value)}
+                  />
+                </Box>
+              </Tooltip>
+              <Tooltip title="Highlight">
+                <Box component="label" sx={colorWrapSx}>
+                  <Icon name="ink_highlighter" size={19} />
+                  <input
+                    type="color"
+                    aria-label="Highlight color"
+                    defaultValue="#fef08a"
+                    onChange={e => execEditorCmd('hiliteColor', e.target.value)}
+                  />
+                </Box>
+              </Tooltip>
+
+              <ToolBtn label="Clear formatting" icon="ink_eraser" onClick={() => execEditorCmd('removeFormat')} />
+              <ToolDivider />
+
+              <ToolBtn label="Insert link" icon="link" onClick={handleInsertLink} />
+              <ToolBtn label="Insert table" icon="table_chart" onClick={handleInsertTable} />
+              <ToolBtn label="Insert divider" icon="horizontal_rule" onClick={() => execEditorCmd('insertHorizontalRule')} />
+              <ToolBtn label="Insert image" icon="add_photo_alternate" onClick={handleInsertImage} />
+              <ToolBtn label="Insert code block" icon="code" onClick={handleInsertCodeBlock} />
+              <ToolBtn label="Spell check" icon="spellcheck" active={noteSpellCheck} onClick={() => setNoteSpellCheck(!noteSpellCheck)} />
+              <ToolDivider />
+
+              <ToolBtn
+                label={isVoiceDictating ? 'Stop dictation' : 'Start dictation'}
+                icon={isVoiceDictating ? 'mic_off' : 'mic'}
+                danger={isVoiceDictating}
+                className={isVoiceDictating ? 'voice-dictating-pulse' : undefined}
+                onClick={toggleVoiceDictation}
+              />
+              <Box
+                component="select"
+                aria-label="Dictation language"
+                title="Dictation language"
+                value={voiceDictationLang}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setVoiceDictationLang(e.target.value as any)}
+                sx={{ ...selectSx, ml: 0.5 }}
+              >
+                <option value="bn-BD">বাংলা (BN)</option>
+                <option value="en-US">English (US)</option>
+              </Box>
+            </Box>
+
+            {/* Rich ContentEditable Note Surface */}
+            <Box sx={{ flex: 1, minHeight: { xs: 280, md: 0 }, display: 'flex', flexDirection: 'column', px: { xs: 2, sm: 3 }, py: 2 }}>
+              <div
+                ref={noteEditorRef}
+                id="note-content-input"
+                className="note-rich-editor"
+                contentEditable
+                suppressContentEditableWarning
+                spellCheck={noteSpellCheck}
+                aria-label="Note content"
+                role="textbox"
+                aria-multiline="true"
+                style={{ lineHeight: noteLineSpacing, fontSize: '15px' }}
+                data-placeholder="Start writing, or paste text, lists and tables..."
+                onInput={e => {
+                  const html = e.currentTarget.innerHTML;
+                  setNoteContent(html);
+                  triggerNoteSave(noteTitle, html);
+                }}
+                onPaste={handleNotePaste}
+              />
+            </Box>
+
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              spacing={1}
+              sx={{ px: { xs: 2, sm: 3 }, py: 1.5, borderTop: '1px solid', borderColor: 'divider' }}
+            >
+              <Typography variant="caption" color="text.secondary" id="note-save-status" noWrap sx={{ minWidth: 0 }}>
+                {noteSaveStatus}
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ flex: 'none' }}>
+                <Tooltip title="Delete note">
+                  <IconButton
+                    id="btn-delete-note"
+                    aria-label="Delete note"
+                    onClick={handleDeleteNote}
+                    sx={{ width: 44, height: 44, borderRadius: '12px', border: '1px solid', borderColor: 'divider', '&:hover': { color: 'error.main' } }}
+                  >
+                    <Icon name="delete" size={20} />
+                  </IconButton>
+                </Tooltip>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  id="btn-manual-save-note"
+                  startIcon={<Icon name="save" size={18} />}
+                  sx={{ minHeight: 44 }}
+                  onClick={() => {
+                    if (noteSaveTimerRef.current) clearTimeout(noteSaveTimerRef.current);
+                    const html = noteEditorRef.current ? noteEditorRef.current.innerHTML : noteContent;
+                    persistNoteNow(noteTitle, html, true);
+                  }}
+                >
+                  Save
+                </Button>
+              </Stack>
+            </Stack>
+          </Card>
+
+          {/* AI assistant + export */}
+          <Card
+            component="aside"
+            aria-label="Writing assistant"
+            sx={{
+              p: 1.5, minWidth: 0, gridColumn: { md: '1 / -1', lg: 'auto' },
+              height: { lg: 'calc(100dvh - 140px)' }, overflowY: { lg: 'auto' },
+              ...(riseSx(2) as object),
+            }}
+          >
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 1, pt: 0.5, pb: 1 }}>
+              <Icon name="auto_awesome" size={20} sx={{ color: 'secondary.main' }} />
+              <Typography variant="subtitle2">Writing assistant</Typography>
+            </Stack>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)', lg: '1fr' },
+                gap: 0.25,
+              }}
+            >
+              {AI_ACTIONS.map((a) => (
+                <ButtonBase key={a.action} onClick={() => handleNoteAI(a.action)} sx={aiBtnSx}>
+                  <Icon name={a.icon} size={19} sx={{ color: 'secondary.main' }} />
+                  <span>{a.label}</span>
+                </ButtonBase>
+              ))}
+              <ButtonBase onClick={() => handleOpenEmailModal('note')} sx={aiBtnSx}>
+                <Icon name="forward_to_inbox" size={19} sx={{ color: 'secondary.main' }} />
+                <span>Draft an email</span>
+              </ButtonBase>
+            </Box>
+
+            <Divider sx={{ my: 1.5 }} />
+            <Typography variant="overline" color="text.secondary" sx={{ px: 1, display: 'block', mb: 1 }}>
+              Export and share
+            </Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)', lg: '1fr 1fr' }, gap: 1 }}>
+              <Button variant="outlined" onClick={handleExportPDF} title="Print or save as PDF" startIcon={<Icon name="picture_as_pdf" size={18} />} sx={{ minHeight: 44 }}>
+                PDF
+              </Button>
+              <Button variant="outlined" onClick={handleExportMarkdown} title="Download as Markdown (.md)" startIcon={<Icon name="download" size={18} />} sx={{ minHeight: 44 }}>
+                Markdown
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => setShowShareModal(true)}
+                startIcon={<Icon name="share" size={18} />}
+                sx={{ minHeight: 44, gridColumn: { xs: '1 / -1', md: 'auto', lg: '1 / -1' } }}
+              >
+                Share preview
+              </Button>
+              {onPublicShareNote && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={onPublicShareNote}
+                  startIcon={<Icon name="public" size={18} />}
+                  sx={{ minHeight: 44, gridColumn: { xs: '1 / -1', md: 'auto', lg: '1 / -1' } }}
+                >
+                  Copy public link
+                </Button>
+              )}
+              {hasActiveOrg && onToggleTeamVisibility && (
+                <Button
+                  variant="outlined"
+                  onClick={onToggleTeamVisibility}
+                  startIcon={<Icon name="groups" size={18} />}
+                  sx={{ minHeight: 44, gridColumn: { xs: '1 / -1', md: 'auto', lg: '1 / -1' } }}
+                >
+                  Share with team
+                </Button>
+              )}
+            </Box>
+          </Card>
+        </Box>
+      </PageContainer>
     </div>
   );
 };

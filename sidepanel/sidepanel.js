@@ -441,7 +441,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // --- Supabase Cloud Save ---
   async function saveMeetingToSupabase() {
     if (!supabase.isAuthenticated()) {
-      showBanner('Please sign in to save your meeting to Supabase Cloud.', true);
+      showBanner('Please sign in to save your meeting to your workspace.', true);
       el.authModal.classList.remove('hidden');
       return;
     }
@@ -458,6 +458,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         ended_at: new Date().toISOString(),
         duration_seconds: state.durationSeconds,
         word_count: state.wordCount,
+        raw_transcript: state.transcripts.map(t => `[${t.speaker}]: ${t.text}`).join('\n'),
         summary: state.currentSummary?.summary || '',
         key_points: state.currentSummary?.key_points || [],
         decisions: state.currentSummary?.decisions || [],
@@ -469,7 +470,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         await supabase.saveTranscripts(savedMeeting.id, state.transcripts);
       }
 
-      showBanner('Meeting and transcripts saved to Supabase Cloud!');
+      showBanner('Meeting saved to your Renim AI workspace!');
     } catch (err) {
       showBanner(`Save to Cloud failed: ${err.message}`, true);
     } finally {
@@ -492,7 +493,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!supabase.isAuthenticated()) {
       el.historyList.innerHTML = `
         <div class="feed-empty-state">
-          <p>Sign in with Supabase to view your cloud meeting history.</p>
+          <p>Sign in to view your saved meetings.</p>
         </div>
       `;
       return;
@@ -592,10 +593,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Ask for access only to the specific hosts the user configured (no blanket https://*/* grant).
       const origins = [sbUrl, aiUrl]
         .filter(Boolean)
-        .map(u => { try { const p = new URL(u); return p.protocol === 'https:' ? `${p.origin}/*` : null; } catch { return null; } })
+        .map(u => { try { const p = new URL(u); return (p.protocol === 'https:' || /^(localhost|127\.0\.0\.1)$/.test(p.hostname)) ? `${p.origin}/*` : null; } catch { return null; } })
         .filter(Boolean);
-      if ((sbUrl && !sbUrl.startsWith('https://')) || (aiUrl && !aiUrl.startsWith('https://'))) {
-        throw new Error('Supabase and AI gateway URLs must use https://');
+      const isLocal = (u) => /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(u);
+      if ((sbUrl && !sbUrl.startsWith('https://') && !isLocal(sbUrl)) || (aiUrl && !aiUrl.startsWith('https://'))) {
+        throw new Error('Workspace and AI URLs must use https:// (http://localhost is allowed for testing)');
       }
       if (origins.length && chrome.permissions) {
         const granted = await chrome.permissions.request({ origins });

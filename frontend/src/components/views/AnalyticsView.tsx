@@ -1,10 +1,18 @@
 import React, { useEffect, useState } from 'react';
+import { Box, Button, Card, Chip, LinearProgress, Skeleton, Stack, Typography } from '@mui/material';
+import { keyframes } from '@mui/material/styles';
 import { fetchAnalyticsOverview } from '../../services/enterprise';
+import { Icon, IconTile, PageContainer, PageHeader, SectionCard, StatCard, EmptyState } from '../ui';
 
 interface AnalyticsViewProps {
   userEmail: string;
   showToast: (msg: string) => void;
 }
+
+const grow = keyframes`
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+`;
 
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ userEmail, showToast }) => {
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchAnalyticsOverview>> | null>(null);
@@ -31,100 +39,104 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ userEmail, showToa
   const totalTasks = Math.max(tasks?.tasks_total || 1, 1);
 
   return (
-    <section className="workspace-view active" id="view-analytics">
-      <div className="card-header-flex" style={{ marginBottom: '16px' }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Executive Analytics & BI Dashboard</h2>
-          <p className="muted-sm" style={{ marginTop: '4px' }}>
-            Real-time workspace velocity, AI productivity ROI, and operational health metrics.
-          </p>
-        </div>
-        <button className="mui-btn mui-btn-outlined mui-btn-sm" onClick={load}>
-          <span className="material-symbols-rounded icon-sm">refresh</span>
-          <span>Refresh Metrics</span>
-        </button>
-      </div>
+    <Box component="section" className="workspace-view active" id="view-analytics">
+      <PageContainer>
+        <PageHeader
+          overline="Insights"
+          title="Insights"
+          description="See how your workspace is doing: time saved, work completed and what your team uses most."
+          actions={
+            <Button variant="outlined" color="inherit" onClick={load} startIcon={<Icon name="refresh" size={18} />} sx={{ minHeight: 44 }}>
+              Refresh
+            </Button>
+          }
+        />
 
-      {loading || !data ? (
-        <div className="mui-card"><p className="muted-sm">Calculating workspace intelligence...</p></div>
-      ) : (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '14px', marginBottom: '20px' }}>
-            <div className="mui-card">
-              <div className="muted-sm">AI Time Saved</div>
-              <div style={{ fontSize: '26px', fontWeight: 800, color: '#06b6d4', marginTop: '6px' }}>
-                {kpis?.ai_hours_saved ?? 0} hrs
-              </div>
-              <div className="muted-sm" style={{ marginTop: '4px' }}>{kpis?.total_ai_calls ?? 0} AI executions</div>
-            </div>
-            <div className="mui-card">
-              <div className="muted-sm">Task Completion Rate</div>
-              <div style={{ fontSize: '26px', fontWeight: 800, color: '#10b981', marginTop: '6px' }}>
-                {kpis?.completion_rate ?? 0}%
-              </div>
-              <div className="muted-sm" style={{ marginTop: '4px' }}>
-                {tasks?.tasks_done ?? 0} of {tasks?.tasks_total ?? 0} tasks done
-              </div>
-            </div>
-            <div className="mui-card">
-              <div className="muted-sm">Knowledge Assets</div>
-              <div style={{ fontSize: '26px', fontWeight: 800, marginTop: '6px' }}>
-                {(kpis?.docs_count ?? 0) + (kpis?.notes_count ?? 0)}
-              </div>
-              <div className="muted-sm" style={{ marginTop: '4px' }}>
-                {kpis?.docs_count ?? 0} Docs ({kpis?.docs_storage_mb ?? 0} MB) • {kpis?.notes_count ?? 0} Notes
-              </div>
-            </div>
-            <div className="mui-card">
-              <div className="muted-sm">Meetings Captured</div>
-              <div style={{ fontSize: '26px', fontWeight: 800, color: '#8b5cf6', marginTop: '6px' }}>
-                {kpis?.meetings_count ?? 0}
-              </div>
-              <div className="muted-sm" style={{ marginTop: '4px' }}>Urgent open tasks: {tasks?.urgent_open ?? 0}</div>
-            </div>
-          </div>
+        {loading || !data ? (
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 2 }}>
+            {[0, 1, 2, 3].map((i) => (
+              <Card key={i} sx={{ p: 2.25 }}>
+                <Skeleton variant="rounded" width={44} height={44} sx={{ mb: 1.5 }} />
+                <Skeleton width="50%" height={30} />
+                <Skeleton width="70%" />
+              </Card>
+            ))}
+            <Typography variant="body2" color="text.secondary" sx={{ gridColumn: '1 / -1' }}>Loading your insights...</Typography>
+          </Box>
+        ) : (
+          <>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 2, mb: 3 }}>
+              <StatCard index={1} icon="schedule" accent="cyan" label="Time saved with AI" value={`${kpis?.ai_hours_saved ?? 0} hrs`} hint={`${kpis?.total_ai_calls ?? 0} AI requests`} />
+              <StatCard index={2} icon="task_alt" accent="green" label="Tasks completed" value={`${kpis?.completion_rate ?? 0}%`} hint={`${tasks?.tasks_done ?? 0} of ${tasks?.tasks_total ?? 0} tasks done`} />
+              <StatCard index={3} icon="folder_open" accent="indigo" label="Documents & notes" value={(kpis?.docs_count ?? 0) + (kpis?.notes_count ?? 0)} hint={`${kpis?.docs_count ?? 0} docs (${kpis?.docs_storage_mb ?? 0} MB) · ${kpis?.notes_count ?? 0} notes`} />
+              <StatCard index={4} icon="groups" accent="violet" label="Meetings captured" value={kpis?.meetings_count ?? 0} hint={`Urgent open tasks: ${tasks?.urgent_open ?? 0}`} />
+            </Box>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-            <div className="mui-card">
-              <h3 style={{ margin: '0 0 14px 0', fontSize: '15px', fontWeight: 700 }}>Sprint & Task Distribution</h3>
-              {[
-                { label: 'Completed (Done)', val: tasks?.tasks_done || 0, color: '#10b981' },
-                { label: 'In Progress', val: tasks?.tasks_in_progress || 0, color: '#06b6d4' },
-                { label: 'Backlog (To-Do)', val: tasks?.tasks_todo || 0, color: '#f59e0b' }
-              ].map((row) => {
-                const pct = Math.round((row.val / totalTasks) * 100);
-                return (
-                  <div key={row.label} style={{ marginBottom: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
-                      <span>{row.label}</span>
-                      <strong>{row.val} ({pct}%)</strong>
-                    </div>
-                    <div style={{ height: '8px', borderRadius: '999px', background: 'var(--mui-border)', overflow: 'hidden' }}>
-                      <div style={{ width: `${pct}%`, height: '100%', background: row.color }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
+              <SectionCard index={5} icon="donut_large" accent="green" title="Task progress" subtitle="Where your work stands right now">
+                <Stack spacing={2.25}>
+                  {[
+                    { label: 'Done', val: tasks?.tasks_done || 0, color: 'success' as const },
+                    { label: 'In progress', val: tasks?.tasks_in_progress || 0, color: 'secondary' as const },
+                    { label: 'To do', val: tasks?.tasks_todo || 0, color: 'warning' as const }
+                  ].map((row, i) => {
+                    const pct = Math.round((row.val / totalTasks) * 100);
+                    return (
+                      <Box key={row.label}>
+                        <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.75 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>{row.label}</Typography>
+                          <Typography variant="body2" color="text.secondary"><Box component="strong" sx={{ color: 'text.primary' }}>{row.val}</Box> · {pct}%</Typography>
+                        </Stack>
+                        <LinearProgress
+                          variant="determinate"
+                          value={pct}
+                          color={row.color}
+                          aria-label={`${row.label}: ${pct}%`}
+                          sx={{
+                            height: 10, borderRadius: 999,
+                            '& .MuiLinearProgress-bar': {
+                              borderRadius: 999,
+                              transformOrigin: 'left',
+                            },
+                            '&': { animation: `${grow} .9s cubic-bezier(.2,.7,.2,1) both`, animationDelay: `${200 + i * 120}ms`, transformOrigin: 'left' },
+                            '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+                          }}
+                        />
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              </SectionCard>
 
-            <div className="mui-card">
-              <h3 style={{ margin: '0 0 14px 0', fontSize: '15px', fontWeight: 700 }}>AI Feature Usage Metering</h3>
-              {data.ai_usage.length === 0 ? (
-                <p className="muted-sm">No metered AI calls recorded yet. Try Ask Copilot or Enterprise RAG!</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {data.ai_usage.map((u) => (
-                    <div key={u.feature} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--mui-border)' }}>
-                      <span style={{ fontWeight: 600, fontSize: '13px' }}>{u.feature}</span>
-                      <span className="cmd-badge">{u.calls} calls • {u.credits} credits</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </section>
+              <SectionCard index={6} icon="auto_awesome" accent="cyan" title="AI usage by feature" subtitle="Requests and credits used">
+                {data.ai_usage.length === 0 ? (
+                  <EmptyState icon="insights" title="No AI usage yet" description="Try Ask Copilot or document search to see usage here." />
+                ) : (
+                  <Stack spacing={1}>
+                    {data.ai_usage.map((u) => (
+                      <Stack
+                        key={u.feature}
+                        direction="row"
+                        alignItems="center"
+                        spacing={1.5}
+                        sx={{
+                          p: 1.25, borderRadius: 2.5, border: 1, borderColor: 'divider',
+                          transition: 'background-color .2s, transform .2s',
+                          '&:hover': { bgcolor: 'action.hover', transform: 'translateX(2px)' },
+                        }}
+                      >
+                        <IconTile icon="bolt" accent="cyan" size={32} />
+                        <Typography variant="body2" sx={{ fontWeight: 600, flex: 1, minWidth: 0 }} noWrap>{u.feature}</Typography>
+                        <Chip size="small" label={`${u.calls} requests · ${u.credits} credits`} />
+                      </Stack>
+                    ))}
+                  </Stack>
+                )}
+              </SectionCard>
+            </Box>
+          </>
+        )}
+      </PageContainer>
+    </Box>
   );
 };

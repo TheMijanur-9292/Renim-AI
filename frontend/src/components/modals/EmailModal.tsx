@@ -1,4 +1,7 @@
 import React from 'react';
+import { Box, Button, CircularProgress, Collapse, Dialog, DialogActions, DialogContent, Divider, MenuItem, Stack, TextField } from '@mui/material';
+import { Icon } from '../ui';
+import { DialogHeader, useDialogProps } from './DialogParts';
 
 interface EmailModalProps {
   isOpen: boolean;
@@ -35,117 +38,79 @@ export const EmailModal: React.FC<EmailModalProps> = ({
   onGenerateEmail,
   onCopyDraft
 }) => {
-  if (!isOpen) return null;
+  const { isPhone: _isPhone, ...dialogProps } = useDialogProps();
+  const px = { xs: 2, sm: 3 };
 
   return (
-    <div className="email-modal-backdrop" onClick={onClose}>
-      <div className="email-modal-box" onClick={e => e.stopPropagation()}>
-        <div className="mui-card-header">
-          <h3 className="mui-card-title">
-            <span className="material-symbols-rounded" style={{ color: '#06b6d4' }}>forward_to_inbox</span>
-            <span>AI Email & Outreach Draftsman</span>
-          </h3>
-          <button className="mui-btn-icon modal-close" onClick={onClose}>
-            &times;
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div className="mui-input-group">
-              <label>Recipient Name or Role</label>
-              <input
-                type="text"
-                className="mui-input"
-                placeholder="e.g. Stakeholders, Alex (Client), Engineering Team"
-                value={emailRecipient}
-                onChange={e => setEmailRecipient(e.target.value)}
-              />
-            </div>
-            <div className="mui-input-group">
-              <label>Tone of Voice</label>
-              <select
-                className="mui-input"
-                value={emailTone}
-                onChange={e => setEmailTone(e.target.value)}
-              >
-                <option value="Professional">Professional & Formal</option>
-                <option value="Friendly">Friendly & Collaborative</option>
-                <option value="Pitch">Pitch / Persuasive</option>
-                <option value="Urgent">Action-Oriented & Urgent</option>
-                <option value="Executive Brief">Executive Summary</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="mui-input-group">
-            <label>Email Objective / Call-to-Action</label>
-            <input
-              type="text"
-              className="mui-input"
-              placeholder="e.g. Request review on meeting deliverables, follow up on contract..."
-              value={emailObjective}
-              onChange={e => setEmailObjective(e.target.value)}
+    <Dialog
+      {...dialogProps}
+      open={isOpen}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      aria-labelledby="email-modal-title"
+    >
+      <DialogHeader id="email-modal-title" icon="forward_to_inbox" title="Draft an email" subtitle="Describe what you need and get a ready-to-send draft." onClose={onClose} />
+      <DialogContent sx={{ px, pt: '8px !important' }}>
+        <Stack spacing={2}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField
+              label="Recipient"
+              fullWidth
+              placeholder="e.g. Alex, the team, a client"
+              value={emailRecipient}
+              onChange={e => setEmailRecipient(e.target.value)}
             />
-          </div>
+            <TextField label="Tone" select fullWidth value={emailTone} onChange={e => setEmailTone(e.target.value)}>
+              <MenuItem value="Professional">Professional</MenuItem>
+              <MenuItem value="Friendly">Friendly</MenuItem>
+              <MenuItem value="Pitch">Persuasive</MenuItem>
+              <MenuItem value="Urgent">Urgent</MenuItem>
+              <MenuItem value="Executive Brief">Brief summary</MenuItem>
+            </TextField>
+          </Stack>
+          <TextField
+            label="Goal"
+            fullWidth
+            placeholder="e.g. Ask for feedback on the proposal"
+            value={emailObjective}
+            onChange={e => setEmailObjective(e.target.value)}
+          />
+          <Box>
+            <Button
+              variant="contained"
+              disabled={isEmailGenerating}
+              onClick={onGenerateEmail}
+              startIcon={isEmailGenerating ? <CircularProgress size={16} color="inherit" /> : <Icon name="auto_awesome" size={18} />}
+            >
+              {isEmailGenerating ? 'Writing draft...' : 'Generate draft'}
+            </Button>
+          </Box>
 
-          <button
-            type="button"
-            className="mui-btn mui-btn-primary"
-            disabled={isEmailGenerating}
-            onClick={onGenerateEmail}
-            style={{ alignSelf: 'flex-start' }}
+          <Collapse in={!!emailSubject} unmountOnExit>
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              <Divider />
+              <TextField label="Subject" fullWidth value={emailSubject} onChange={e => setEmailSubject(e.target.value)} />
+              <TextField label="Message" fullWidth multiline minRows={7} maxRows={16} value={emailBody} onChange={e => setEmailBody(e.target.value)} />
+            </Stack>
+          </Collapse>
+        </Stack>
+      </DialogContent>
+      {emailSubject && (
+        <DialogActions sx={{ px, pb: { xs: 2, sm: 2.5 }, pt: 1, gap: 1, flexWrap: 'wrap' }}>
+          <Button variant="outlined" onClick={onCopyDraft} startIcon={<Icon name="content_copy" size={18} />}>
+            Copy
+          </Button>
+          <Button
+            variant="contained"
+            component="a"
+            href={`mailto:${encodeURIComponent(emailRecipient.includes('@') ? emailRecipient : '')}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`}
+            startIcon={<Icon name="send" size={18} />}
           >
-            <span className="material-symbols-rounded icon-sm">
-              {isEmailGenerating ? 'sync' : 'auto_awesome'}
-            </span>
-            <span>{isEmailGenerating ? 'Drafting with Qwen 2.5...' : 'Generate Email Draft'}</span>
-          </button>
-
-          {emailSubject && (
-            <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div className="mui-input-group">
-                <label>Generated Subject</label>
-                <input
-                  type="text"
-                  className="mui-input"
-                  value={emailSubject}
-                  onChange={e => setEmailSubject(e.target.value)}
-                />
-              </div>
-
-              <div className="mui-input-group">
-                <label>Generated Body</label>
-                <textarea
-                  className="mui-input"
-                  style={{ height: '180px', fontFamily: 'inherit', lineHeight: 1.6 }}
-                  value={emailBody}
-                  onChange={e => setEmailBody(e.target.value)}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  className="mui-btn mui-btn-outlined"
-                  onClick={onCopyDraft}
-                >
-                  <span className="material-symbols-rounded icon-sm">content_copy</span>
-                  <span>Copy Full Draft</span>
-                </button>
-                <a
-                  href={`mailto:${encodeURIComponent(emailRecipient.includes('@') ? emailRecipient : '')}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`}
-                  className="mui-btn mui-btn-primary"
-                  style={{ textDecoration: 'none' }}
-                >
-                  <span className="material-symbols-rounded icon-sm">send</span>
-                  <span>Open in Mail Client</span>
-                </a>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+            Open in email app
+          </Button>
+        </DialogActions>
+      )}
+    </Dialog>
   );
 };

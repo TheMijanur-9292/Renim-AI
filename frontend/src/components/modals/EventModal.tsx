@@ -1,4 +1,6 @@
 import React from 'react';
+import { Button, Dialog, DialogActions, DialogContent, MenuItem, Stack, TextField } from '@mui/material';
+import { DialogHeader, useDialogProps } from './DialogParts';
 
 interface EventModalProps {
   isOpen: boolean;
@@ -13,80 +15,47 @@ export const EventModal: React.FC<EventModalProps> = ({
   onSubmit,
   calSelectedDateStr
 }) => {
-  if (!isOpen) return null;
+  const { isPhone, ...dialogProps } = useDialogProps();
 
   return (
-    <div id="modal-event" className="modal-backdrop">
-      <div className="modal-dialog">
-        <div className="mui-card-header">
-          <h3 className="mui-card-title">
-            <span className="material-symbols-rounded">event</span>
-            <span>New Calendar Event & Reminder</span>
-          </h3>
-          <button className="mui-btn-icon modal-close" onClick={onClose}>
-            &times;
-          </button>
-        </div>
-        <form id="form-create-event" onSubmit={onSubmit}>
-          <div className="mui-input-group">
-            <label>Event Title</label>
-            <input
-              type="text"
-              name="title"
-              className="mui-input"
-              required
-              placeholder="e.g. Sprint Planning Call"
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div className="mui-input-group">
-              <label>Date</label>
-              <input
-                type="date"
-                name="event_date"
-                className="mui-input"
-                required
-                defaultValue={calSelectedDateStr}
-              />
-            </div>
-            <div className="mui-input-group">
-              <label>Time</label>
-              <input
-                type="time"
-                name="start_time"
-                className="mui-input"
-                required
-                defaultValue="10:00"
-              />
-            </div>
-          </div>
-          <div className="mui-input-group">
-            <label>Category</label>
-            <select name="category" className="mui-input" defaultValue="Work">
-              <option value="Work">Work</option>
-              <option value="Meeting">Meeting</option>
-              <option value="Deadline">Deadline</option>
-              <option value="Personal">Personal</option>
-            </select>
-          </div>
-          <div className="mui-input-group">
-            <label>Reminder Alert</label>
-            <select name="reminder_minutes" className="mui-input" defaultValue="15">
-              <option value="5">5 minutes before</option>
-              <option value="15">15 minutes before</option>
-              <option value="30">30 minutes before</option>
-              <option value="60">1 hour before</option>
-            </select>
-          </div>
-          <button
-            type="submit"
-            className="mui-btn mui-btn-primary mui-btn-block"
-            style={{ width: '100%', marginTop: '12px' }}
-          >
-            Create Event
-          </button>
-        </form>
-      </div>
-    </div>
+    <Dialog
+      {...dialogProps}
+      id="modal-event"
+      open={isOpen}
+      // Original closed only via the close button (no backdrop/Escape close).
+      onClose={() => {}}
+      maxWidth="xs"
+      fullWidth
+      aria-labelledby="modal-event-title"
+    >
+      <form id="form-create-event" onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', height: isPhone ? '100%' : undefined }}>
+        <DialogHeader id="modal-event-title" icon="event" accent="indigo" title="New event" subtitle="Add it to your calendar with a reminder." onClose={onClose} />
+        <DialogContent sx={{ px: { xs: 2, sm: 3 }, pt: '8px !important' }}>
+          <Stack spacing={2}>
+            <TextField name="title" label="Title" required autoFocus fullWidth placeholder="e.g. Weekly planning" />
+            <Stack direction="row" spacing={1.5}>
+              <TextField name="event_date" label="Date" type="date" required fullWidth defaultValue={calSelectedDateStr} slotProps={{ inputLabel: { shrink: true } }} />
+              <TextField name="start_time" label="Time" type="time" required fullWidth defaultValue="10:00" slotProps={{ inputLabel: { shrink: true } }} />
+            </Stack>
+            <TextField name="category" label="Category" select fullWidth defaultValue="Work">
+              <MenuItem value="Work">Work</MenuItem>
+              <MenuItem value="Meeting">Meeting</MenuItem>
+              <MenuItem value="Deadline">Deadline</MenuItem>
+              <MenuItem value="Personal">Personal</MenuItem>
+            </TextField>
+            <TextField name="reminder_minutes" label="Reminder" select fullWidth defaultValue="15">
+              <MenuItem value="5">5 minutes before</MenuItem>
+              <MenuItem value="15">15 minutes before</MenuItem>
+              <MenuItem value="30">30 minutes before</MenuItem>
+              <MenuItem value="60">1 hour before</MenuItem>
+            </TextField>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: { xs: 2, sm: 3 }, pb: { xs: 2, sm: 2.5 }, pt: 1, gap: 1, mt: isPhone ? 'auto' : 0 }}>
+          <Button variant="outlined" onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="contained">Create event</Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
 };

@@ -208,7 +208,7 @@
       <section id="tab-history" class="tab-pane">
         <div class="history-toolbar">
           <input type="text" id="history-search" class="input search-input" placeholder="Search saved meetings...">
-          <button id="btn-refresh-history" class="icon-btn" title="Refresh from Supabase">
+          <button id="btn-refresh-history" class="icon-btn" title="Refresh">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="23 4 23 10 17 10"></polyline>
               <polyline points="1 20 1 14 7 14"></polyline>
@@ -227,13 +227,13 @@
       <!-- ================= TAB 4: CONFIGURATION & SETTINGS ================= -->
       <section id="tab-settings" class="tab-pane">
         <div class="settings-form">
-          <h3 class="section-title">Cloud Storage & Auth (Supabase)</h3>
+          <h3 class="section-title">Renim AI workspace</h3>
           <div class="form-group">
-            <label for="input-sb-url">Supabase Project URL</label>
-            <input type="url" id="input-sb-url" class="input" placeholder="https://xyzcompany.supabase.co" />
+            <label for="input-sb-url">Workspace URL</label>
+            <input type="url" id="input-sb-url" class="input" placeholder="https://your-renim-workspace.com" />
           </div>
-          <div class="form-group">
-            <label for="input-sb-anon">Supabase Anon Public Key</label>
+          <div class="form-group" hidden>
+            <label for="input-sb-anon">Legacy key (not needed)</label>
             <input type="password" id="input-sb-anon" class="input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..." />
           </div>
 

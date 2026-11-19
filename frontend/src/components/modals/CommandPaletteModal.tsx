@@ -1,4 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Dialog, InputBase, List, ListItemButton, ListItemIcon, ListItemText, ListSubheader, Typography } from '@mui/material';
+import { alpha } from '@mui/material/styles';
+import { Icon } from '../ui';
+import { useDialogProps } from './DialogParts';
 import type { ViewId } from '../common/Sidebar';
 
 interface CommandPaletteModalProps {
@@ -18,22 +22,22 @@ interface CommandPaletteModalProps {
 }
 
 const VIEW_COMMANDS: Array<{ id: ViewId; label: string; icon: string; section: string }> = [
-  { id: 'view-today', label: 'Today Dashboard', icon: 'wb_sunny', section: 'Navigation' },
-  { id: 'view-meetings', label: 'Meetings Hub', icon: 'mic', section: 'Navigation' },
-  { id: 'view-notes', label: 'Smart Notes', icon: 'edit_note', section: 'Navigation' },
-  { id: 'view-calendar', label: 'Calendar & Alerts', icon: 'calendar_month', section: 'Navigation' },
-  { id: 'view-tasks', label: 'Tasks & Kanban Board', icon: 'task_alt', section: 'Navigation' },
-  { id: 'view-growth', label: 'Habits, Goals, Mind-Map & Tools', icon: 'local_fire_department', section: 'Navigation' },
-  { id: 'view-docs', label: 'Docs & Knowledge AI', icon: 'description', section: 'Navigation' },
-  { id: 'view-rag', label: 'Enterprise RAG Search', icon: 'neurology', section: 'Navigation' },
-  { id: 'view-chat', label: 'Ask Copilot AI', icon: 'smart_toy', section: 'Navigation' },
-  { id: 'view-team', label: 'Team & Organizations (Multi-Tenant)', icon: 'corporate_fare', section: 'Enterprise' },
-  { id: 'view-analytics', label: 'Analytics & BI', icon: 'analytics', section: 'Enterprise' },
-  { id: 'view-integrations', label: 'Integrations & API Keys', icon: 'hub', section: 'Enterprise' },
-  { id: 'view-billing', label: 'Billing & Quotas', icon: 'payments', section: 'Enterprise' },
-  { id: 'view-security', label: 'Security & Audit Logs', icon: 'verified_user', section: 'Enterprise' },
-  { id: 'view-profile', label: 'My Profile & Account', icon: 'account_circle', section: 'Enterprise' },
-  { id: 'view-settings', label: 'Settings & Cloud', icon: 'tune', section: 'Enterprise' },
+  { id: 'view-today', label: 'Today', icon: 'wb_sunny', section: 'Go to' },
+  { id: 'view-meetings', label: 'Meetings', icon: 'mic', section: 'Go to' },
+  { id: 'view-notes', label: 'Notes', icon: 'edit_note', section: 'Go to' },
+  { id: 'view-calendar', label: 'Calendar', icon: 'calendar_month', section: 'Go to' },
+  { id: 'view-tasks', label: 'Tasks', icon: 'task_alt', section: 'Go to' },
+  { id: 'view-growth', label: 'Habits & goals', icon: 'local_fire_department', section: 'Go to' },
+  { id: 'view-docs', label: 'Documents', icon: 'description', section: 'Go to' },
+  { id: 'view-rag', label: 'Knowledge search', icon: 'neurology', section: 'Go to' },
+  { id: 'view-chat', label: 'Ask Copilot', icon: 'forum', section: 'Go to' },
+  { id: 'view-team', label: 'Team', icon: 'corporate_fare', section: 'Workspace' },
+  { id: 'view-analytics', label: 'Insights', icon: 'insights', section: 'Workspace' },
+  { id: 'view-integrations', label: 'Integrations', icon: 'hub', section: 'Workspace' },
+  { id: 'view-billing', label: 'Plan & Billing', icon: 'credit_card', section: 'Workspace' },
+  { id: 'view-security', label: 'Security', icon: 'verified_user', section: 'Workspace' },
+  { id: 'view-profile', label: 'Profile', icon: 'account_circle', section: 'Workspace' },
+  { id: 'view-settings', label: 'Settings', icon: 'tune', section: 'Workspace' },
 ];
 
 export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
@@ -52,6 +56,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   onSelectDoc,
 }) => {
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const { isPhone, ...dialogProps } = useDialogProps();
+  const listRef = useRef<HTMLUListElement | null>(null);
 
   useEffect(() => {
     if (isOpen) setSelectedIdx(0);
@@ -66,9 +72,9 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       icon: string;
       run: () => void;
     }> = [
-      { key: 'act-note', label: 'Create New Smart Note', sub: 'Quick Action', icon: 'add_notes', run: onCreateNote },
-      { key: 'act-task', label: 'Create New Task', sub: 'Quick Action', icon: 'add_task', run: onCreateTask },
-      { key: 'act-doc', label: 'Upload Knowledge Document', sub: 'Quick Action', icon: 'upload_file', run: onUploadDoc },
+      { key: 'act-note', label: 'New note', sub: 'Actions', icon: 'add_notes', run: onCreateNote },
+      { key: 'act-task', label: 'New task', sub: 'Actions', icon: 'add_task', run: onCreateTask },
+      { key: 'act-doc', label: 'Upload document', sub: 'Actions', icon: 'upload_file', run: onUploadDoc },
       ...VIEW_COMMANDS.map((v) => ({
         key: `view-${v.id}`,
         label: v.label,
@@ -78,22 +84,22 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       })),
       ...notes.slice(0, 8).map((n) => ({
         key: `note-${n.id}`,
-        label: n.title || 'Untitled Note',
-        sub: 'Smart Note',
+        label: n.title || 'Untitled note',
+        sub: 'Notes',
         icon: 'description',
         run: () => onSelectNote(n.id),
       })),
       ...tasks.slice(0, 8).map((t) => ({
         key: `task-${t.id}`,
         label: t.title,
-        sub: 'Task',
+        sub: 'Tasks',
         icon: 'check_box',
         run: () => onNavigateView('view-tasks'),
       })),
       ...documents.slice(0, 6).map((d) => ({
         key: `doc-${d.id}`,
         label: d.filename || d.title || 'Document',
-        sub: 'Knowledge Doc',
+        sub: 'Documents',
         icon: 'article',
         run: () => onSelectDoc(d.id),
       })),
@@ -124,86 +130,94 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, items, selectedIdx, onClose]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${selectedIdx}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [selectedIdx]);
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(2, 6, 23, 0.65)',
-        backdropFilter: 'blur(4px)',
-        zIndex: 9500,
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        paddingTop: '11vh',
-      }}
+    <Dialog
+      {...dialogProps}
+      open={isOpen}
+      // Escape is handled by the keydown listener above; backdrop click closes.
+      disableEscapeKeyDown
+      onClose={(_e, reason) => { if (reason === 'backdropClick') onClose(); }}
+      maxWidth={false}
+      aria-labelledby="command-palette-title"
+      sx={{ '& .MuiDialog-container': { alignItems: isPhone ? 'stretch' : 'flex-start' } }}
+      PaperProps={{ sx: { width: isPhone ? '100%' : 'min(620px, 92vw)', mt: isPhone ? 0 : '11vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: isPhone ? '100%' : '70vh' } }}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: '92%',
-          maxWidth: '580px',
-          background: 'var(--mui-surface)',
-          border: '1px solid var(--mui-border)',
-          borderRadius: '14px',
-          boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px', borderBottom: '1px solid var(--mui-border)' }}>
-          <span className="material-symbols-rounded" style={{ color: 'var(--mui-primary)' }}>search</span>
-          <input
-            autoFocus
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setSelectedIdx(0);
-            }}
-            placeholder="Jump to view, search notes/tasks/docs, or run quick action..."
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--mui-text-primary)', fontSize: '14px' }}
-          />
-          <kbd style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--mui-border)', color: 'var(--mui-text-muted)' }}>
-            ESC
-          </kbd>
-        </div>
+      <Typography id="command-palette-title" sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+        Command palette
+      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2.5, py: 2, borderBottom: 1, borderColor: 'divider' }}>
+        <Icon name="search" size={24} sx={{ color: 'primary.main' }} />
+        <InputBase
+          autoFocus
+          fullWidth
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setSelectedIdx(0);
+          }}
+          placeholder="Search or jump to..."
+          inputProps={{ 'aria-label': 'Search commands' }}
+          sx={{ fontSize: 18, fontWeight: 500 }}
+        />
+        <Box
+          component={isPhone ? 'button' : 'kbd'}
+          onClick={isPhone ? onClose : undefined}
+          aria-label={isPhone ? 'Close' : undefined}
+          sx={{ fontSize: 11, fontWeight: 700, px: 0.75, py: 0.25, borderRadius: '6px', border: 1, borderColor: 'divider', color: 'text.secondary', bgcolor: 'transparent', fontFamily: 'inherit', cursor: isPhone ? 'pointer' : 'default' }}
+        >
+          ESC
+        </Box>
+      </Box>
 
-        <div style={{ maxHeight: '360px', overflowY: 'auto', padding: '8px' }}>
-          {items.length === 0 ? (
-            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--mui-text-muted)', fontSize: '13px' }}>
-              No matching commands or workspace items.
-            </div>
-          ) : (
-            items.map((item, idx) => (
-              <div
-                key={item.key}
-                onMouseEnter={() => setSelectedIdx(idx)}
-                onClick={() => item.run()}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '9px 12px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  background: idx === selectedIdx ? 'var(--mui-primary-subtle)' : 'transparent',
-                  color: idx === selectedIdx ? 'var(--mui-text-primary)' : 'var(--mui-text-secondary)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span className="material-symbols-rounded" style={{ fontSize: '18px', color: idx === selectedIdx ? 'var(--mui-primary)' : 'var(--mui-text-muted)' }}>
-                    {item.icon}
-                  </span>
-                  <span style={{ fontSize: '13.5px', fontWeight: 500 }}>{item.label}</span>
-                </div>
-                <span style={{ fontSize: '11px', color: 'var(--mui-text-muted)' }}>{item.sub}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
+      <Box sx={{ flex: 1, overflowY: 'auto', p: 1 }}>
+        {items.length === 0 ? (
+          <Box sx={{ py: 5, textAlign: 'center' }}>
+            <Icon name="search_off" size={28} sx={{ color: 'text.disabled' }} />
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>No results found.</Typography>
+          </Box>
+        ) : (
+          <List ref={listRef} disablePadding role="listbox" aria-label="Results">
+            {items.map((item, idx) => {
+              const active = idx === selectedIdx;
+              const showHeader = idx === 0 || items[idx - 1].sub !== item.sub;
+              return (
+                <React.Fragment key={item.key}>
+                  {showHeader && (
+                    <ListSubheader disableSticky sx={{ bgcolor: 'transparent', lineHeight: '28px', mt: idx === 0 ? 0 : 1, px: 1.5, fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'text.secondary' }}>
+                      {item.sub}
+                    </ListSubheader>
+                  )}
+                  <ListItemButton
+                    data-idx={idx}
+                    role="option"
+                    aria-selected={active}
+                    selected={active}
+                    onMouseEnter={() => setSelectedIdx(idx)}
+                    onClick={() => item.run()}
+                    sx={(t) => ({
+                      py: 1,
+                      px: 1.5,
+                      transition: 'background-color .12s ease',
+                      '&.Mui-selected, &.Mui-selected:hover': { bgcolor: alpha(t.palette.primary.main, t.palette.mode === 'dark' ? 0.16 : 0.07) },
+                    })}
+                  >
+                    <ListItemIcon sx={{ minWidth: 36, color: active ? 'primary.main' : 'text.secondary' }}>
+                      <Icon name={item.icon} size={20} />
+                    </ListItemIcon>
+                    <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: 14.5, fontWeight: active ? 600 : 500, noWrap: true }} />
+                    {active && <Icon name="keyboard_return" size={16} sx={{ color: 'text.secondary', ml: 1 }} />}
+                  </ListItemButton>
+                </React.Fragment>
+              );
+            })}
+          </List>
+        )}
+      </Box>
+    </Dialog>
   );
 };

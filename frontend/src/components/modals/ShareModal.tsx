@@ -1,5 +1,8 @@
 import React from 'react';
+import { Box, Button, Dialog, DialogContent, Stack, TextField, Typography } from '@mui/material';
 import { sanitizeHtml } from '../../utils/sanitize';
+import { Icon } from '../ui';
+import { DialogHeader, useDialogProps } from './DialogParts';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -20,54 +23,47 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   noteEditorHtml,
   onCopyShareLink
 }) => {
-  if (!isOpen) return null;
+  const { isPhone: _isPhone, ...dialogProps } = useDialogProps();
 
   const shareUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/share/note/${activeNoteId || 'note-preview'}`
     : `/share/note/${activeNoteId || 'note-preview'}`;
 
   return (
-    <div className="email-modal-backdrop" onClick={onClose}>
-      <div className="email-modal-box" style={{ maxWidth: '640px' }} onClick={e => e.stopPropagation()}>
-        <div className="mui-card-header">
-          <h3 className="mui-card-title">
-            <span className="material-symbols-rounded" style={{ color: '#06b6d4' }}>share</span>
-            <span>Shareable Note Link</span>
-          </h3>
-          <button className="mui-btn-icon modal-close" onClick={onClose}>
-            &times;
-          </button>
-        </div>
-
-        <p className="user-status" style={{ margin: '8px 0 14px 0' }}>
-          Anyone with this link can view a read-only live preview of this document.
-        </p>
-
-        <div className="mui-input-group" style={{ display: 'flex', gap: '8px' }}>
-          <input
-            type="text"
-            className="mui-input"
-            readOnly
+    <Dialog
+      {...dialogProps}
+      open={isOpen}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      aria-labelledby="share-modal-title"
+    >
+      <DialogHeader id="share-modal-title" icon="share" title="Share note" subtitle="Anyone with the link can view a read-only copy." onClose={onClose} />
+      <DialogContent sx={{ px: { xs: 2, sm: 3 }, pt: '8px !important', pb: { xs: 2, sm: 3 } }}>
+        <Stack direction="row" spacing={1} alignItems="stretch">
+          <TextField
+            fullWidth
+            size="small"
             value={shareUrl}
+            slotProps={{ htmlInput: { readOnly: true, 'aria-label': 'Share link' } }}
+            onFocus={e => e.target.select()}
           />
-          <button
-            type="button"
-            className="mui-btn mui-btn-primary"
-            onClick={onCopyShareLink}
-          >
-            <span className="material-symbols-rounded icon-sm">content_copy</span>
-            <span>Copy</span>
-          </button>
-        </div>
+          <Button variant="contained" onClick={onCopyShareLink} startIcon={<Icon name="content_copy" size={18} />} sx={{ flex: 'none' }}>
+            Copy
+          </Button>
+        </Stack>
 
-        <div style={{ marginTop: '16px', background: 'var(--mui-paper)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--mui-border)' }}>
-          <h3 style={{ margin: '0 0 10px 0', fontSize: '18px' }}>{noteTitle || 'Untitled Note'}</h3>
-          <div
-            style={{ fontSize: '13.5px', lineHeight: 1.6, color: 'var(--mui-text-primary)', maxHeight: '200px', overflowY: 'auto' }}
-            dangerouslySetInnerHTML={{ __html: sanitizeHtml(noteEditorHtml || noteContent || '') || '<em>Empty note.</em>' }}
+        <Typography variant="overline" color="text.secondary" component="div" sx={{ mt: 3, mb: 1 }}>
+          Preview
+        </Typography>
+        <Box sx={{ p: 2.5, borderRadius: '14px', border: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
+          <Typography variant="h6" component="h3" sx={{ mb: 1 }}>{noteTitle || 'Untitled note'}</Typography>
+          <Box
+            sx={{ fontSize: 14, lineHeight: 1.65, color: 'text.primary', maxHeight: 240, overflowY: 'auto', '& img': { maxWidth: '100%' }, '& > :first-of-type': { mt: 0 } }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(noteEditorHtml || noteContent || '') || '<em>This note is empty.</em>' }}
           />
-        </div>
-      </div>
-    </div>
+        </Box>
+      </DialogContent>
+    </Dialog>
   );
 };

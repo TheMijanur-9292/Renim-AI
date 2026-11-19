@@ -112,7 +112,8 @@ _CORS_ORIGINS = [o.strip() for o in _CORS_RAW.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
+    # localhost for dev; chrome-extension:// for the Renim AI side panel (auth is via Bearer token).
+    allow_origin_regex=r"(https?://(localhost|127\.0\.0\.1)(:\d+)?|chrome-extension://[a-p]{32})",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

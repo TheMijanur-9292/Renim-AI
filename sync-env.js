@@ -45,8 +45,7 @@ const configContent = `/**
  */
 
 const ENV_CONFIG = {
-  SUPABASE_URL: ${JSON.stringify(parsed.SUPABASE_URL || '')},
-  SUPABASE_ANON_KEY: ${JSON.stringify(parsed.SUPABASE_ANON_KEY || '')},
+  RENIM_API_URL: ${JSON.stringify(parsed.RENIM_API_URL || '')},
   AI_GATEWAY_URL: ${JSON.stringify(parsed.AI_GATEWAY_URL || 'https://api.openai.com/v1')},
   AI_GATEWAY_API_KEY: ${JSON.stringify(parsed.AI_GATEWAY_API_KEY || '')},
   AI_GATEWAY_MODEL: ${JSON.stringify(parsed.AI_GATEWAY_MODEL || 'gpt-4o-mini')}

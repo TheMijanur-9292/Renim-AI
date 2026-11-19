@@ -193,7 +193,7 @@ export class DatabaseClient {
     localStorage.removeItem('sb_session');
   }
 
-  private getUserEmail(): string {
+  getUserEmail(): string {
     return (this.user?.email || 'guest@renimai.com').toLowerCase().trim();
   }
 

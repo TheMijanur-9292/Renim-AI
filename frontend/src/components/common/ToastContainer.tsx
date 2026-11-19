@@ -1,9 +1,12 @@
 import React from 'react';
+import { Box, IconButton, Paper, Slide, Stack, Typography, useMediaQuery } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
+import { Icon } from '../ui';
 
 export interface ToastItem {
   id: number | string;
   message: string;
-  type: 'success' | 'info' | 'error';
+  type: 'success' | 'info' | 'warning' | 'error';
 }
 
 interface ToastContainerProps {
@@ -11,74 +14,74 @@ interface ToastContainerProps {
   onDismiss?: (id: number | string) => void;
 }
 
+const TYPE_META: Record<ToastItem['type'], { icon: string; color: 'success' | 'info' | 'warning' | 'error' }> = {
+  success: { icon: 'check_circle', color: 'success' },
+  info: { icon: 'info', color: 'info' },
+  warning: { icon: 'warning', color: 'warning' },
+  error: { icon: 'error', color: 'error' },
+};
+
 export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismiss }) => {
+  const theme = useTheme();
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+
   if (toasts.length === 0) return null;
 
   return (
-    <div
+    <Box
       className="toast-container-fixed"
-      style={{
+      role="region"
+      aria-label="Notifications"
+      sx={{
         position: 'fixed',
         bottom: '20px',
         right: '20px',
         zIndex: 9999,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px',
-        maxWidth: '360px',
+        maxWidth: '380px',
+        width: { sm: 380 },
+        pointerEvents: 'none',
       }}
     >
-      {toasts.map((t) => {
-        const bg =
-          t.type === 'error'
-            ? '#ef4444'
-            : t.type === 'info'
-            ? '#0891b2'
-            : '#10b981';
-        const icon =
-          t.type === 'error'
-            ? 'error'
-            : t.type === 'info'
-            ? 'info'
-            : 'check_circle';
-        return (
-          <div
-            key={t.id}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '10px 14px',
-              borderRadius: '10px',
-              background: 'var(--mui-surface)',
-              border: `1px solid ${bg}`,
-              boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
-              color: 'var(--mui-text-primary)',
-              fontSize: '13px',
-              fontWeight: 500,
-            }}
-          >
-            <span className="material-symbols-rounded" style={{ color: bg, fontSize: '18px' }}>
-              {icon}
-            </span>
-            <span style={{ flex: 1 }}>{t.message}</span>
-            {onDismiss && (
-              <button
-                onClick={() => onDismiss(t.id)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--mui-text-muted)',
-                  cursor: 'pointer',
-                  padding: '2px',
+      <Stack spacing={1} alignItems="flex-end">
+        {toasts.map((t) => {
+          const meta = TYPE_META[t.type] || TYPE_META.info;
+          const main = theme.palette[meta.color].main;
+          return (
+            <Slide key={t.id} in direction="left" appear timeout={reduceMotion ? 0 : 260}>
+              <Paper
+                elevation={6}
+                role={t.type === 'error' ? 'alert' : 'status'}
+                sx={{
+                  pointerEvents: 'auto',
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.25,
+                  py: 1.25,
+                  pl: 1.5,
+                  pr: onDismiss ? 0.75 : 1.75,
+                  borderRadius: '14px',
+                  border: 1,
+                  borderColor: alpha(main, 0.35),
+                  boxShadow: theme.palette.mode === 'dark' ? '0 12px 30px rgba(0,0,0,.5)' : '0 12px 30px rgba(15,23,42,.12)',
                 }}
               >
-                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>close</span>
-              </button>
-            )}
-          </div>
-        );
-      })}
-    </div>
+                <Box sx={{ width: 30, height: 30, borderRadius: '9px', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: alpha(main, 0.12), color: main }}>
+                  <Icon name={meta.icon} size={18} fill />
+                </Box>
+                <Typography variant="body2" sx={{ flex: 1, fontWeight: 500, color: 'text.primary', wordBreak: 'break-word' }}>
+                  {t.message}
+                </Typography>
+                {onDismiss && (
+                  <IconButton size="small" aria-label="Dismiss" onClick={() => onDismiss(t.id)} sx={{ color: 'text.secondary' }}>
+                    <Icon name="close" size={16} />
+                  </IconButton>
+                )}
+              </Paper>
+            </Slide>
+          );
+        })}
+      </Stack>
+    </Box>
   );
 };

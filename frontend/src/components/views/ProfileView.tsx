@@ -9,6 +9,36 @@ import {
 } from '../../services/profile';
 import type { ViewId } from '../common/Sidebar';
 import { getStoredJwtToken } from '../../services/enterprise';
+import {
+  Avatar,
+  Box,
+  Button,
+  Card,
+  Chip,
+  CircularProgress,
+  Divider,
+  LinearProgress,
+  MenuItem,
+  Stack,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography
+} from '@mui/material';
+import { alpha } from '@mui/material/styles';
+import { EmptyState, Icon, PageContainer, SectionCard, StatCard, riseSx } from '../ui';
+
+/** Icon shown for each quick-avatar preset (stored values stay unchanged). */
+const AVATAR_ICONS: Record<string, { icon: string; label: string }> = {
+  '🚀': { icon: 'rocket_launch', label: 'Rocket' },
+  '🧠': { icon: 'psychology', label: 'Brain' },
+  '⚡': { icon: 'bolt', label: 'Bolt' },
+  '🎯': { icon: 'target', label: 'Target' },
+  '🛡️': { icon: 'shield', label: 'Shield' },
+  '👨‍💻': { icon: 'laptop_mac', label: 'Laptop' },
+};
+
 
 interface ProfileViewProps {
   userEmail: string;
@@ -289,131 +319,111 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const completionPct =
     stats.tasks_total > 0 ? Math.round((stats.tasks_completed / stats.tasks_total) * 100) : 0;
 
+  const [tab, setTab] = useState(0);
+  const presetIcon = AVATAR_ICONS[profile.avatar_url];
+  const isGuest = userEmail === 'guest@renimai.com';
+  const creditPct =
+    stats.ai_credits_limit > 0 ? Math.min(100, Math.round((stats.ai_credits_used / stats.ai_credits_limit) * 100)) : 0;
+  const twoCol = { display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } } as const;
+
   return (
     <div id="view-profile" className="view-container active">
-      <div style={{ maxWidth: '1120px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+      <PageContainer>
         {/* Hero Profile Banner */}
-        <div
-          className="mui-card"
-          style={{
-            background:
-              'linear-gradient(135deg, rgba(6, 182, 212, 0.14) 0%, rgba(99, 102, 241, 0.12) 100%)',
-            borderColor: 'rgba(6, 182, 212, 0.35)',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '16px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-              <div
-                onClick={() => avatarFileInputRef.current?.click()}
-                title="Click to upload profile photo"
-                style={{
-                  width: '78px',
-                  height: '78px',
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #06b6d4, #6366f1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: isImageAvatar ? '0px' : profile.avatar_url ? '34px' : '30px',
-                  fontWeight: 800,
-                  color: '#ffffff',
-                  cursor: 'pointer',
-                  overflow: 'hidden',
-                  border: '3px solid rgba(255,255,255,0.25)',
-                  flexShrink: 0,
-                  boxShadow: '0 8px 24px rgba(6, 182, 212, 0.25)',
-                }}
-              >
-                {isImageAvatar ? (
-                  <img
-                    src={profile.avatar_url}
+        <Card sx={{ p: { xs: 2.5, sm: 3 }, mb: 2.5, ...riseSx(0) }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between">
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2.25} alignItems={{ xs: 'flex-start', sm: 'center' }} sx={{ minWidth: 0 }}>
+              <Tooltip title="Upload photo">
+                <Box
+                  component="button"
+                  type="button"
+                  aria-label="Upload profile photo"
+                  onClick={() => avatarFileInputRef.current?.click()}
+                  sx={{
+                    p: 0,
+                    border: 0,
+                    bgcolor: 'transparent',
+                    borderRadius: '50%',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    flex: 'none',
+                    '&:hover .avatar-overlay, &:focus-visible .avatar-overlay': { opacity: 1 },
+                  }}
+                >
+                  <Avatar
+                    src={isImageAvatar ? profile.avatar_url : undefined}
                     alt={profile.full_name}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                ) : (
-                  profile.avatar_url || initialLetter
-                )}
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 700 }}>
-                    {profile.full_name || 'Renim AI User'}
-                  </h2>
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      padding: '3px 10px',
-                      borderRadius: '999px',
-                      background: 'rgba(6, 182, 212, 0.18)',
-                      color: '#22d3ee',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
+                    sx={{
+                      width: 80,
+                      height: 80,
+                      bgcolor: 'primary.main',
+                      color: 'primary.contrastText',
+                      fontSize: 32,
+                      fontWeight: 800,
+                      boxShadow: (t) => `0 0 0 4px ${alpha(t.palette.secondary.main, 0.2)}`,
                     }}
                   >
-                    {stats.plan_id} Plan
-                  </span>
-                  {activeOrgName && (
-                    <span
-                      style={{
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        padding: '3px 10px',
-                        borderRadius: '999px',
-                        background: 'rgba(99, 102, 241, 0.18)',
-                        color: '#a5b4fc',
-                      }}
-                    >
-                      {activeOrgName}
-                    </span>
-                  )}
-                </div>
+                    {isImageAvatar ? null : presetIcon ? <Icon name={presetIcon.icon} size={36} /> : profile.avatar_url || initialLetter}
+                  </Avatar>
+                  <Box
+                    className="avatar-overlay"
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      borderRadius: '50%',
+                      bgcolor: 'rgba(15,23,42,.55)',
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: 0,
+                      transition: 'opacity .2s',
+                    }}
+                  >
+                    <Icon name="photo_camera" size={24} />
+                  </Box>
+                </Box>
+              </Tooltip>
 
-                <div style={{ fontSize: '13px', opacity: 0.85 }}>
-                  {profile.job_title ? `${profile.job_title}` : 'Workspace Member'}
-                  {profile.department ? ` • ${profile.department}` : ''}
-                  {' • '}
-                  <span style={{ opacity: 0.75 }}>{profile.email}</span>
-                </div>
-
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="overline" color="text.secondary">My profile</Typography>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Typography variant="h4" component="h1" sx={{ overflowWrap: 'anywhere' }}>
+                    {profile.full_name || 'Renim AI User'}
+                  </Typography>
+                  <Chip size="small" color="secondary" label={`${stats.plan_id} plan`} sx={{ fontWeight: 700, textTransform: 'capitalize' }} />
+                  {activeOrgName && <Chip size="small" variant="outlined" icon={<Icon name="corporate_fare" size={14} />} label={activeOrgName} />}
+                </Stack>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>
+                  {profile.job_title ? `${profile.job_title}` : 'Workspace member'}
+                  {profile.department ? ` · ${profile.department}` : ''}
+                  {' · '}
+                  {profile.email}
+                </Typography>
                 {profile.created_at && (
-                  <div style={{ fontSize: '11.5px', opacity: 0.65 }}>
+                  <Typography variant="caption" color="text.secondary">
                     Member since {new Date(profile.created_at).toLocaleDateString()}
-                    {profile.location ? ` • ${profile.location}` : ''}
-                  </div>
+                    {profile.location ? ` · ${profile.location}` : ''}
+                  </Typography>
                 )}
-              </div>
-            </div>
+              </Box>
+            </Stack>
 
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className="mui-btn mui-btn-outlined mui-btn-sm"
-                onClick={() => avatarFileInputRef.current?.click()}
-              >
-                <span className="material-symbols-rounded icon-sm">photo_camera</span>
-                <span>Upload Photo</span>
-              </button>
-              <button
-                type="button"
-                className="mui-btn mui-btn-primary mui-btn-sm"
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 'none' }}>
+              <Button variant="outlined" startIcon={<Icon name="photo_camera" />} onClick={() => avatarFileInputRef.current?.click()}>
+                Upload photo
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Icon name="save" />}
                 onClick={() => handleSaveProfile()}
                 disabled={saving}
               >
-                <span className="material-symbols-rounded icon-sm">save</span>
-                <span>{saving ? 'Saving...' : 'Save Profile'}</span>
-              </button>
-            </div>
-          </div>
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+            </Stack>
+          </Stack>
 
           <input
             ref={avatarFileInputRef}
@@ -422,545 +432,505 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             style={{ display: 'none' }}
             onChange={handleAvatarUpload}
           />
-        </div>
+        </Card>
 
         {/* Live Productivity Stats */}
-        <div className="mui-grid-3" style={{ gap: '14px' }}>
-          <div className="mui-card" style={{ padding: '16px' }}>
-            <div style={{ fontSize: '12px', opacity: 0.7 }}>Smart Notes & Docs</div>
-            <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px', color: '#22d3ee' }}>
-              {loading ? '...' : `${stats.notes_count} Notes`}
-            </div>
-            <div style={{ fontSize: '12px', opacity: 0.75, marginTop: '4px' }}>
-              {stats.documents_count} Knowledge Docs indexed
-            </div>
-          </div>
+        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' }, mb: 3 }}>
+          <StatCard
+            index={1}
+            icon="description"
+            accent="cyan"
+            label="Notes"
+            value={loading ? '...' : stats.notes_count}
+            hint={`${stats.documents_count} documents in knowledge base`}
+          />
+          <StatCard
+            index={2}
+            icon="task_alt"
+            accent="green"
+            label="Tasks done"
+            value={loading ? '...' : `${stats.tasks_completed} / ${stats.tasks_total}`}
+            hint={`${completionPct}% complete · ${stats.meetings_count} meetings`}
+          />
+          <Card sx={{ p: 2.25, ...riseSx(3), gridColumn: { sm: '1 / -1', md: 'auto' } }}>
+            <Stack direction="row" alignItems="center" spacing={1.75}>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.15 }}>
+                  {loading ? '...' : `${stats.ai_credits_used} / ${stats.ai_credits_limit}`}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>AI credits used</Typography>
+              </Box>
+              <Typography variant="caption" color="text.secondary">{stats.habits_count} habits · {stats.goals_count} goals</Typography>
+            </Stack>
+            <LinearProgress
+              variant="determinate"
+              value={loading ? 0 : creditPct}
+              color="secondary"
+              aria-label="AI credits used"
+              sx={{ mt: 1.5, height: 6, borderRadius: 3, '& .MuiLinearProgress-bar': { borderRadius: 3, transition: 'transform .8s cubic-bezier(.2,.7,.2,1)' } }}
+            />
+          </Card>
+        </Box>
 
-          <div className="mui-card" style={{ padding: '16px' }}>
-            <div style={{ fontSize: '12px', opacity: 0.7 }}>Tasks & Execution</div>
-            <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px', color: '#34d399' }}>
-              {loading ? '...' : `${stats.tasks_completed} / ${stats.tasks_total}`}
-            </div>
-            <div style={{ fontSize: '12px', opacity: 0.75, marginTop: '4px' }}>
-              {completionPct}% completion • {stats.meetings_count} Meetings
-            </div>
-          </div>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3, ...riseSx(4) }}>
+          <Tabs
+            value={tab}
+            onChange={(_, v) => setTab(v)}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            aria-label="Profile sections"
+          >
+            <Tab icon={<Icon name="badge" size={18} />} iconPosition="start" label="Details" sx={{ minHeight: 48 }} />
+            <Tab icon={<Icon name="corporate_fare" size={18} />} iconPosition="start" label={`Organizations (${memberships.length})`} sx={{ minHeight: 48 }} />
+            <Tab icon={<Icon name="lock" size={18} />} iconPosition="start" label="Security" sx={{ minHeight: 48 }} />
+          </Tabs>
+        </Box>
 
-          <div className="mui-card" style={{ padding: '16px' }}>
-            <div style={{ fontSize: '12px', opacity: 0.7 }}>Growth & AI Credits</div>
-            <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px', color: '#a78bfa' }}>
-              {loading ? '...' : `${stats.ai_credits_used} / ${stats.ai_credits_limit}`}
-            </div>
-            <div style={{ fontSize: '12px', opacity: 0.75, marginTop: '4px' }}>
-              {stats.habits_count} Habits • {stats.goals_count} Goals
-            </div>
-          </div>
-        </div>
-
-        {/* Main 2-Column Layout: Edit Profile + Security & Orgs */}
-        <div className="mui-grid-2" style={{ gap: '18px', alignItems: 'start' }}>
-          {/* Left: Edit Personal & Work Profile */}
-          <form className="mui-card" onSubmit={handleSaveProfile}>
-            <h3 className="mui-card-title" style={{ marginBottom: '14px' }}>
-              <span className="material-symbols-rounded">badge</span>
-              <span>Personal & Workspace Identity</span>
-            </h3>
+        {/* Tab: Personal details */}
+        {tab === 0 && (
+          <Card component="form" onSubmit={handleSaveProfile} sx={{ p: { xs: 2.25, sm: 3 }, ...riseSx(5) }}>
+            <Typography variant="h6" component="h2" sx={{ mb: 0.5 }}>Personal details</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>How you appear to your team and your AI assistant.</Typography>
 
             {/* Avatar Presets */}
-            <div className="mui-input-group">
-              <label>Quick Avatar Icon</label>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                {AVATAR_PRESETS.map((emoji) => (
-                  <button
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Quick avatar</Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mb: 3 }}>
+              {AVATAR_PRESETS.map((emoji) => {
+                const meta = AVATAR_ICONS[emoji];
+                const selected = profile.avatar_url === emoji;
+                return (
+                  <Box
                     key={emoji}
+                    component="button"
                     type="button"
+                    aria-label={`Use ${meta?.label || 'preset'} avatar`}
+                    aria-pressed={selected}
                     onClick={() => setProfile((p) => ({ ...p, avatar_url: emoji }))}
-                    style={{
-                      width: '38px',
-                      height: '38px',
-                      borderRadius: '10px',
-                      border:
-                        profile.avatar_url === emoji
-                          ? '2px solid #06b6d4'
-                          : '1px solid var(--mui-border)',
-                      background: 'rgba(255,255,255,0.04)',
-                      fontSize: '18px',
+                    sx={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: '12px',
+                      border: selected ? 2 : 1,
+                      borderColor: selected ? 'secondary.main' : 'divider',
+                      bgcolor: (t) => (selected ? alpha(t.palette.secondary.main, 0.1) : 'transparent'),
+                      color: selected ? 'secondary.main' : 'text.secondary',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       cursor: 'pointer',
+                      transition: 'transform .15s ease',
+                      '&:hover': { transform: 'translateY(-2px)' },
+                      '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
                     }}
                   >
-                    {emoji}
-                  </button>
-                ))}
-                {profile.avatar_url && (
-                  <button
-                    type="button"
-                    className="mui-btn mui-btn-outlined mui-btn-sm"
-                    onClick={() => setProfile((p) => ({ ...p, avatar_url: '' }))}
-                  >
-                    Reset Initials
-                  </button>
-                )}
-              </div>
-            </div>
+                    {meta ? <Icon name={meta.icon} size={22} fill={selected} /> : emoji}
+                  </Box>
+                );
+              })}
+              {profile.avatar_url && (
+                <Button variant="text" startIcon={<Icon name="restart_alt" />} onClick={() => setProfile((p) => ({ ...p, avatar_url: '' }))}>
+                  Use initials
+                </Button>
+              )}
+            </Stack>
 
-            <div className="mui-grid-2" style={{ gap: '12px' }}>
-              <div className="mui-input-group">
-                <label>Full Name</label>
-                <input
-                  type="text"
-                  className="mui-input"
+            <Stack spacing={2}>
+              <Box sx={twoCol}>
+                <TextField
+                  label="Full name"
                   value={profile.full_name}
                   onChange={(e) => setProfile((p) => ({ ...p, full_name: e.target.value }))}
                   placeholder="Your full name"
+                  fullWidth
                 />
-              </div>
-
-              <div className="mui-input-group">
-                <label>Email Address</label>
-                <input type="email" className="mui-input" value={profile.email} readOnly />
-              </div>
-            </div>
-
-            <div className="mui-grid-2" style={{ gap: '12px' }}>
-              <div className="mui-input-group">
-                <label>Job Title / Role</label>
-                <input
-                  type="text"
-                  className="mui-input"
+                <TextField type="email" label="Email" value={profile.email} slotProps={{ input: { readOnly: true } }} fullWidth />
+              </Box>
+              <Box sx={twoCol}>
+                <TextField
+                  label="Job title"
                   value={profile.job_title}
                   onChange={(e) => setProfile((p) => ({ ...p, job_title: e.target.value }))}
-                  placeholder="e.g. Product Manager, Tech Lead"
+                  placeholder="e.g. Manager, Designer"
+                  fullWidth
                 />
-              </div>
-
-              <div className="mui-input-group">
-                <label>Department / Team</label>
-                <input
-                  type="text"
-                  className="mui-input"
+                <TextField
+                  label="Team or department"
                   value={profile.department}
                   onChange={(e) => setProfile((p) => ({ ...p, department: e.target.value }))}
-                  placeholder="e.g. Engineering, Operations"
+                  placeholder="e.g. Operations, Sales"
+                  fullWidth
                 />
-              </div>
-            </div>
-
-            <div className="mui-grid-2" style={{ gap: '12px' }}>
-              <div className="mui-input-group">
-                <label>Phone</label>
-                <input
-                  type="text"
-                  className="mui-input"
+              </Box>
+              <Box sx={twoCol}>
+                <TextField
+                  label="Phone"
                   value={profile.phone}
                   onChange={(e) => setProfile((p) => ({ ...p, phone: e.target.value }))}
                   placeholder="+91 98765 43210"
+                  fullWidth
                 />
-              </div>
-
-              <div className="mui-input-group">
-                <label>Location / City</label>
-                <input
-                  type="text"
-                  className="mui-input"
+                <TextField
+                  label="City"
                   value={profile.location}
                   onChange={(e) => setProfile((p) => ({ ...p, location: e.target.value }))}
                   placeholder="e.g. Kolkata, India"
+                  fullWidth
                 />
-              </div>
-            </div>
-
-            <div className="mui-grid-2" style={{ gap: '12px' }}>
-              <div className="mui-input-group">
-                <label>Timezone</label>
-                <select
-                  className="mui-input"
+              </Box>
+              <Box sx={twoCol}>
+                <TextField
+                  select
+                  label="Time zone"
                   value={profile.timezone}
                   onChange={(e) => setProfile((p) => ({ ...p, timezone: e.target.value }))}
+                  fullWidth
                 >
                   {TIMEZONES.map((tz) => (
-                    <option key={tz} value={tz}>
+                    <MenuItem key={tz} value={tz}>
                       {tz}
-                    </option>
+                    </MenuItem>
                   ))}
-                </select>
-              </div>
-
-              <div className="mui-input-group">
-                <label>Working Hours</label>
-                <input
-                  type="text"
-                  className="mui-input"
+                </TextField>
+                <TextField
+                  label="Working hours"
                   value={profile.working_hours}
                   onChange={(e) => setProfile((p) => ({ ...p, working_hours: e.target.value }))}
                   placeholder="09:00 - 18:00"
+                  fullWidth
                 />
-              </div>
-            </div>
-
-            <div className="mui-input-group">
-              <label>Default AI Copilot Persona</label>
-              <select
-                className="mui-input"
+              </Box>
+              <TextField
+                select
+                label="AI assistant style"
                 value={profile.ai_persona_preference}
-                onChange={(e) =>
-                  setProfile((p) => ({ ...p, ai_persona_preference: e.target.value }))
-                }
+                onChange={(e) => setProfile((p) => ({ ...p, ai_persona_preference: e.target.value }))}
+                fullWidth
               >
                 {AI_PERSONAS.map((persona) => (
-                  <option key={persona} value={persona}>
+                  <MenuItem key={persona} value={persona}>
                     {persona}
-                  </option>
+                  </MenuItem>
                 ))}
-              </select>
-            </div>
-
-            <div className="mui-input-group">
-              <label>Bio / About Me</label>
-              <textarea
-                className="mui-input"
-                rows={3}
+              </TextField>
+              <TextField
+                label="About me"
+                multiline
+                minRows={3}
                 value={profile.bio}
                 onChange={(e) => setProfile((p) => ({ ...p, bio: e.target.value }))}
-                placeholder="Tell your team or AI Copilot about your focus areas and goals..."
+                placeholder="Your focus areas and goals..."
+                fullWidth
               />
-            </div>
-
-            <button
-              type="submit"
-              className="mui-btn mui-btn-primary"
-              disabled={saving}
-              style={{ width: '100%' }}
-            >
-              <span className="material-symbols-rounded icon-sm">check_circle</span>
-              <span>{saving ? 'Saving Changes...' : 'Save Profile Changes'}</span>
-            </button>
-          </form>
-
-          {/* Right: Organizations & Account Security */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-            {/* Organizations */}
-            <div className="mui-card">
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '12px',
-                  gap: '10px',
-                }}
-              >
-                <h3 className="mui-card-title" style={{ margin: 0 }}>
-                  <span className="material-symbols-rounded">corporate_fare</span>
-                  <span>Organizations & Roles ({memberships.length})</span>
-                </h3>
-                <button
-                  type="button"
-                  className="mui-btn mui-btn-outlined mui-btn-sm"
-                  onClick={() => onNavigateView('view-team')}
+              <Box>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  color="primary"
+                  size="large"
+                  disabled={saving}
+                  startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Icon name="check_circle" />}
+                  sx={{ width: { xs: '100%', sm: 'auto' } }}
                 >
-                  Manage Teams
-                </button>
-              </div>
+                  {saving ? 'Saving...' : 'Save changes'}
+                </Button>
+              </Box>
+            </Stack>
+          </Card>
+        )}
 
-              {memberships.length === 0 ? (
-                <p style={{ fontSize: '13px', opacity: 0.7, margin: 0 }}>
-                  You are currently using your Personal Workspace. Create or join an Organization in{' '}
-                  <strong>Team &amp; Orgs</strong> for multi-tenant collaboration.
-                </p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {memberships.map((m) => (
-                    <div
-                      key={m.org_id}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '10px 12px',
-                        borderRadius: '10px',
-                        border: '1px solid var(--mui-border)',
-                        background: 'rgba(255,255,255,0.02)',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '14px' }}>{m.org_name}</div>
-                        <div style={{ fontSize: '11.5px', opacity: 0.7 }}>
-                          Plan: {m.plan} • Status: {m.status}
-                        </div>
-                      </div>
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          padding: '3px 9px',
-                          borderRadius: '999px',
-                          background: 'rgba(6, 182, 212, 0.16)',
-                          color: '#22d3ee',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {m.role}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Account Security */}
-            <div className="mui-card">
-              <h3 className="mui-card-title" style={{ marginBottom: '12px' }}>
-                <span className="material-symbols-rounded">lock</span>
-                <span>Account Security &amp; Session</span>
-              </h3>
-
-              {userEmail === 'guest@renimai.com' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <p style={{ fontSize: '13px', opacity: 0.78, margin: 0 }}>
-                    You are currently browsing as a Guest (`guest@renimai.com`). Sign in or create a
-                    personal account to protect your workspace with a password.
-                  </p>
-                  <button
-                    type="button"
-                    className="mui-btn mui-btn-primary"
-                    onClick={onAuthTrigger}
+        {/* Tab: Organizations */}
+        {tab === 1 && (
+          <SectionCard
+            index={5}
+            icon="corporate_fare"
+            accent="indigo"
+            title="Organizations & roles"
+            subtitle="Teams you belong to."
+            action={
+              <Button variant="outlined" size="small" sx={{ minHeight: 40, flex: 'none' }} onClick={() => onNavigateView('view-team')}>
+                Manage teams
+              </Button>
+            }
+          >
+            {memberships.length === 0 ? (
+              <EmptyState
+                icon="groups"
+                title="Personal workspace"
+                description="Create or join an organization in Teams to work together."
+              />
+            ) : (
+              <Stack spacing={1.25}>
+                {memberships.map((m, i) => (
+                  <Stack
+                    key={m.org_id}
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    spacing={1.5}
+                    sx={{
+                      px: 2,
+                      py: 1.5,
+                      borderRadius: 3,
+                      border: 1,
+                      borderColor: 'divider',
+                      ...riseSx(i + 6),
+                      transition: 'border-color .2s',
+                      '&:hover': { borderColor: 'secondary.main' },
+                    }}
                   >
-                    <span className="material-symbols-rounded icon-sm">login</span>
-                    <span>Sign In / Create Account</span>
-                  </button>
-                </div>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="subtitle2" noWrap>{m.org_name}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Plan: {m.plan} · Status: {m.status}
+                      </Typography>
+                    </Box>
+                    <Chip size="small" label={m.role} color="secondary" variant="outlined" sx={{ fontWeight: 700, textTransform: 'capitalize' }} />
+                  </Stack>
+                ))}
+              </Stack>
+            )}
+          </SectionCard>
+        )}
+
+        {/* Tab: Account Security */}
+        {tab === 2 && (
+          <Stack spacing={2.5}>
+            <SectionCard index={5} icon="lock" accent="slate" title="Password & sign-in">
+              {isGuest ? (
+                <Stack spacing={2} alignItems="flex-start">
+                  <Typography variant="body2" color="text.secondary">
+                    You are browsing as a guest. Sign in or create an account to protect your workspace with a password.
+                  </Typography>
+                  <Button variant="contained" color="primary" startIcon={<Icon name="login" />} onClick={onAuthTrigger}>
+                    Sign in / Create account
+                  </Button>
+                </Stack>
               ) : (
-                <form onSubmit={handleChangePassword}>
-                  {profile.has_password && (
-                    <div className="mui-input-group">
-                      <label>Current Password</label>
-                      <input
+                <Box component="form" onSubmit={handleChangePassword}>
+                  <Stack spacing={2}>
+                    {profile.has_password && (
+                      <TextField
                         type="password"
-                        className="mui-input"
+                        label="Current password"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
-                        placeholder="Enter current password"
+                        autoComplete="current-password"
+                        fullWidth
                       />
-                    </div>
-                  )}
-                  <div className="mui-input-group">
-                    <label>New Password (min 6 characters)</label>
-                    <input
-                      type="password"
-                      className="mui-input"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Enter new password"
-                    />
-                  </div>
-                  <div className="mui-input-group">
-                    <label>Confirm New Password</label>
-                    <input
-                      type="password"
-                      className="mui-input"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Re-enter new password"
-                    />
-                  </div>
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    <button
-                      type="submit"
-                      className="mui-btn mui-btn-primary"
-                      disabled={changingPass}
-                      style={{ flex: 1 }}
-                    >
-                      <span className="material-symbols-rounded icon-sm">key</span>
-                      <span>{changingPass ? 'Updating...' : 'Update Password'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="mui-btn mui-btn-outlined"
-                      onClick={onAuthTrigger}
-                    >
-                      <span className="material-symbols-rounded icon-sm">
-                        {isAuthenticated ? 'logout' : 'login'}
-                      </span>
-                      <span>{isAuthenticated ? 'Sign Out' : 'Sign In'}</span>
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {userEmail !== 'guest@renimai.com' && (
-                <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid var(--mui-border)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    <strong style={{ fontSize: '14px' }}>Two-Factor Authentication (TOTP 2FA)</strong>
-                    <span
-                      className="cmd-badge"
-                      style={{ color: totpEnabled ? '#10b981' : '#f59e0b' }}
-                    >
-                      {totpEnabled ? 'ENABLED' : 'OFF'}
-                    </span>
-                  </div>
-
-                  {!totpEnabled && !totpSecret && (
-                    <button
-                      type="button"
-                      className="mui-btn mui-btn-outlined mui-btn-sm"
-                      disabled={totpBusy}
-                      onClick={handleSetup2FA}
-                    >
-                      <span className="material-symbols-rounded icon-sm">verified_user</span>
-                      <span>{totpBusy ? 'Generating...' : 'Enable 2FA Authenticator'}</span>
-                    </button>
-                  )}
-
-                  {!totpEnabled && totpSecret && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <div style={{ fontSize: '12px', opacity: 0.85 }}>
-                        Add this secret key to Google Authenticator / Authy:
-                      </div>
-                      <code
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: '8px',
-                          background: 'rgba(6, 182, 212, 0.1)',
-                          fontSize: '12.5px',
-                          letterSpacing: '1px',
-                          wordBreak: 'break-all',
-                        }}
+                    )}
+                    <Box sx={twoCol}>
+                      <TextField
+                        type="password"
+                        label="New password"
+                        helperText="At least 6 characters"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        autoComplete="new-password"
+                        fullWidth
+                      />
+                      <TextField
+                        type="password"
+                        label="Confirm new password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        autoComplete="new-password"
+                        fullWidth
+                      />
+                    </Box>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                      <Button
+                        type="submit"
+                        variant="contained"
+                        color="primary"
+                        disabled={changingPass}
+                        startIcon={changingPass ? <CircularProgress size={16} color="inherit" /> : <Icon name="key" />}
                       >
-                        {totpSecret}
-                      </code>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <input
-                          type="text"
-                          className="mui-input"
-                          placeholder="6-digit code"
-                          maxLength={6}
-                          value={totpCode}
-                          onChange={(e) => setTotpCode(e.target.value)}
-                          style={{ flex: 1 }}
-                        />
-                        <button
-                          type="button"
-                          className="mui-btn mui-btn-primary mui-btn-sm"
-                          disabled={totpBusy}
-                          onClick={handleVerify2FA}
-                        >
-                          Verify &amp; Enable
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                        {changingPass ? 'Updating...' : 'Update password'}
+                      </Button>
+                      <Button variant="outlined" startIcon={<Icon name={isAuthenticated ? 'logout' : 'login'} />} onClick={onAuthTrigger}>
+                        {isAuthenticated ? 'Sign out' : 'Sign in'}
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </Box>
+              )}
+            </SectionCard>
 
-                  {totpEnabled && (
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <input
-                        type="text"
-                        className="mui-input"
-                        placeholder="Enter 6-digit code to disable"
-                        maxLength={6}
+            {!isGuest && (
+              <SectionCard
+                index={6}
+                icon="verified_user"
+                accent="green"
+                title="Two-step verification"
+                subtitle="Use an authenticator app for an extra code at sign-in."
+                action={
+                  <Chip
+                    size="small"
+                    label={totpEnabled ? 'On' : 'Off'}
+                    color={totpEnabled ? 'success' : 'warning'}
+                    variant="outlined"
+                    sx={{ fontWeight: 700 }}
+                  />
+                }
+              >
+                {!totpEnabled && !totpSecret && (
+                  <Button
+                    variant="outlined"
+                    disabled={totpBusy}
+                    startIcon={totpBusy ? <CircularProgress size={16} color="inherit" /> : <Icon name="verified_user" />}
+                    onClick={handleSetup2FA}
+                  >
+                    {totpBusy ? 'Generating...' : 'Turn on'}
+                  </Button>
+                )}
+
+                {!totpEnabled && totpSecret && (
+                  <Stack spacing={1.5}>
+                    <Typography variant="body2" color="text.secondary">
+                      Add this key to your authenticator app (e.g. Google Authenticator or Authy):
+                    </Typography>
+                    <Box
+                      component="code"
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 2,
+                        bgcolor: (t) => alpha(t.palette.secondary.main, 0.1),
+                        fontSize: 13,
+                        letterSpacing: '1px',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {totpSecret}
+                    </Box>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                      <TextField
+                        label="6-digit code"
                         value={totpCode}
                         onChange={(e) => setTotpCode(e.target.value)}
-                        style={{ flex: 1 }}
+                        slotProps={{ htmlInput: { maxLength: 6, inputMode: 'numeric' } }}
+                        fullWidth
                       />
-                      <button
-                        type="button"
-                        className="mui-btn mui-btn-outlined mui-btn-sm"
-                        disabled={totpBusy}
-                        onClick={handleDisable2FA}
-                      >
-                        Disable 2FA
-                      </button>
-                    </div>
-                  )}
+                      <Button variant="contained" color="primary" disabled={totpBusy} onClick={handleVerify2FA} sx={{ minHeight: 56, flex: 'none' }}>
+                        Verify & turn on
+                      </Button>
+                    </Stack>
+                  </Stack>
+                )}
 
-                  {/* GDPR Privacy & Session Revocation */}
-                  <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--mui-border)', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    <button
-                      type="button"
-                      className="mui-btn mui-btn-outlined mui-btn-sm"
-                      onClick={async () => {
-                        const token = getStoredJwtToken();
-                        if (!token) return;
-                        try {
-                          const r = await fetch('/api/auth/logout-all', {
-                            method: 'POST',
-                            headers: { Authorization: `Bearer ${token}` },
-                          });
-                          const d = await r.json();
-                          if (!r.ok) throw new Error(d.error || 'Failed');
-                          showToast('All active sessions revoked. Signing out...', 'info');
-                          setTimeout(() => onAuthTrigger(), 900);
-                        } catch (e: any) {
-                          showToast(e.message || 'Failed to revoke sessions', 'error');
-                        }
-                      }}
-                    >
-                      <span className="material-symbols-rounded icon-sm">devices</span>
-                      <span>Sign Out All Devices</span>
-                    </button>
+                {totpEnabled && (
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                    <TextField
+                      label="6-digit code to turn off"
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value)}
+                      slotProps={{ htmlInput: { maxLength: 6, inputMode: 'numeric' } }}
+                      fullWidth
+                    />
+                    <Button variant="outlined" color="error" disabled={totpBusy} onClick={handleDisable2FA} sx={{ minHeight: 56, flex: 'none' }}>
+                      Turn off
+                    </Button>
+                  </Stack>
+                )}
+              </SectionCard>
+            )}
 
-                    <button
-                      type="button"
-                      className="mui-btn mui-btn-outlined mui-btn-sm"
-                      onClick={async () => {
-                        const token = getStoredJwtToken();
-                        if (!token) return;
-                        try {
-                          const r = await fetch('/api/profile/export-data', {
-                            headers: { Authorization: `Bearer ${token}` },
-                          });
-                          if (!r.ok) throw new Error('Export failed');
-                          const blob = await r.blob();
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = 'renim-ai-gdpr-export.json';
-                          document.body.appendChild(a);
-                          a.click();
-                          a.remove();
-                          URL.revokeObjectURL(url);
-                          showToast('GDPR personal data exported', 'success');
-                        } catch (e: any) {
-                          showToast(e.message || 'Export failed', 'error');
-                        }
-                      }}
-                    >
-                      <span className="material-symbols-rounded icon-sm">download</span>
-                      <span>Export My Data (GDPR)</span>
-                    </button>
+            {/* Privacy & Session Revocation */}
+            {!isGuest && (
+              <SectionCard index={7} icon="shield_person" accent="red" title="Privacy & account" subtitle="Sessions, your data and account removal.">
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} useFlexGap flexWrap="wrap">
+                  <Button
+                    variant="outlined"
+                    startIcon={<Icon name="devices" />}
+                    onClick={async () => {
+                      const token = getStoredJwtToken();
+                      if (!token) return;
+                      try {
+                        const r = await fetch('/api/auth/logout-all', {
+                          method: 'POST',
+                          headers: { Authorization: `Bearer ${token}` },
+                        });
+                        const d = await r.json();
+                        if (!r.ok) throw new Error(d.error || 'Failed');
+                        showToast('All active sessions revoked. Signing out...', 'info');
+                        setTimeout(() => onAuthTrigger(), 900);
+                      } catch (e: any) {
+                        showToast(e.message || 'Failed to revoke sessions', 'error');
+                      }
+                    }}
+                  >
+                    Sign out all devices
+                  </Button>
 
-                    <button
-                      type="button"
-                      className="mui-btn mui-btn-outlined mui-btn-sm"
-                      style={{ color: '#f87171', borderColor: 'rgba(248, 113, 113, 0.35)' }}
-                      onClick={async () => {
-                        if (!confirm('Permanently delete your account and all personal workspace data? This cannot be undone.')) return;
-                        const token = getStoredJwtToken();
-                        if (!token) return;
-                        try {
-                          const r = await fetch('/api/profile/account', {
-                            method: 'DELETE',
-                            headers: { Authorization: `Bearer ${token}` },
-                          });
-                          const d = await r.json();
-                          if (!r.ok) throw new Error(d.error || 'Deletion failed');
-                          localStorage.removeItem('sb_session');
-                          showToast('Account permanently deleted', 'info');
-                          window.location.href = '/signin';
-                        } catch (e: any) {
-                          showToast(e.message || 'Account deletion failed', 'error');
-                        }
-                      }}
-                    >
-                      <span className="material-symbols-rounded icon-sm">delete_forever</span>
-                      <span>Delete Account</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+                  <Button
+                    variant="outlined"
+                    startIcon={<Icon name="download" />}
+                    onClick={async () => {
+                      const token = getStoredJwtToken();
+                      if (!token) return;
+                      try {
+                        const r = await fetch('/api/profile/export-data', {
+                          headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (!r.ok) throw new Error('Export failed');
+                        const blob = await r.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'renim-ai-gdpr-export.json';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                        showToast('Your data has been exported', 'success');
+                      } catch (e: any) {
+                        showToast(e.message || 'Export failed', 'error');
+                      }
+                    }}
+                  >
+                    Export my data
+                  </Button>
+                </Stack>
+
+                <Divider sx={{ my: 2.5 }} />
+
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} justifyContent="space-between">
+                  <Box>
+                    <Typography variant="subtitle2" color="error.main">Delete account</Typography>
+                    <Typography variant="body2" color="text.secondary">Permanently remove your account and personal data.</Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<Icon name="delete_forever" />}
+                    sx={{ flex: 'none' }}
+                    onClick={async () => {
+                      if (!confirm('Permanently delete your account and all personal workspace data? This cannot be undone.')) return;
+                      const token = getStoredJwtToken();
+                      if (!token) return;
+                      try {
+                        const r = await fetch('/api/profile/account', {
+                          method: 'DELETE',
+                          headers: { Authorization: `Bearer ${token}` },
+                        });
+                        const d = await r.json();
+                        if (!r.ok) throw new Error(d.error || 'Deletion failed');
+                        localStorage.removeItem('sb_session');
+                        showToast('Account permanently deleted', 'info');
+                        window.location.href = '/signin';
+                      } catch (e: any) {
+                        showToast(e.message || 'Account deletion failed', 'error');
+                      }
+                    }}
+                  >
+                    Delete account
+                  </Button>
+                </Stack>
+              </SectionCard>
+            )}
+          </Stack>
+        )}
+      </PageContainer>
     </div>
   );
 };

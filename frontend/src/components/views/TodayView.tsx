@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
+import { Box, Button, Card, Checkbox, Chip, Grid2 as Grid, IconButton, Stack, Typography } from '@mui/material';
 import { renderMarkdownToHtml } from '../../utils/markdown';
+import { EmptyState, Icon, IconTile, PageContainer, PageHeader, SectionCard, StatCard, riseSx } from '../ui';
+import type { Accent } from '../../theme/renimTheme';
 
 export interface TodayViewProps {
   isActive: boolean;
+  userName?: string;
   isVoiceMemoActive: boolean;
   handleVoiceMemoToggle: () => void;
   voiceMemoStatus: string;
@@ -21,8 +25,27 @@ export interface TodayViewProps {
   onNavigateView?: (view: any) => void;
 }
 
+const priorityColor = (p?: string): 'error' | 'warning' | 'default' => {
+  const v = (p || 'medium').toLowerCase();
+  return v === 'high' || v === 'urgent' ? 'error' : v === 'medium' ? 'warning' : 'default';
+};
+
+const greeting = () => {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+};
+
+const hoverCard = {
+  cursor: 'pointer',
+  transition: 'transform .2s ease, box-shadow .2s ease, border-color .2s ease',
+  '&:hover': { transform: 'translateY(-3px)', boxShadow: 4, borderColor: 'secondary.main' },
+  '&:focus-visible': { outline: '2px solid', outlineColor: 'secondary.main', outlineOffset: 2 },
+  '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
+};
+
 export const TodayView: React.FC<TodayViewProps> = ({
   isActive,
+  userName,
   isVoiceMemoActive,
   handleVoiceMemoToggle,
   voiceMemoStatus,
@@ -55,301 +78,247 @@ export const TodayView: React.FC<TodayViewProps> = ({
     } catch {}
   };
 
+  const quickActions: { icon: string; accent: Accent; title: string; hint: string; onClick: () => void }[] = onNavigateView
+    ? [
+        { icon: 'calendar_month', accent: 'cyan', title: 'Calendar', hint: 'Sync and import events', onClick: () => onNavigateView('view-calendar') },
+        { icon: 'timer', accent: 'green', title: 'Focus session', hint: 'Timed work with ambient sound', onClick: () => onOpenFocusModal?.() },
+        { icon: 'view_kanban', accent: 'indigo', title: 'Task board', hint: 'Drag tasks between stages', onClick: () => onNavigateView('view-tasks') },
+        { icon: 'notifications_active', accent: 'amber', title: 'Notifications', hint: 'Browser and email alerts', onClick: () => onNavigateView('view-settings') },
+      ]
+    : [];
+
   return (
     <div id="view-today" className={`view-container ${isActive ? 'active' : ''}`}>
-      {!checklistDismissed && (
-        <div
-          className="mui-card"
-          style={{
-            marginBottom: '14px',
-            padding: '14px 18px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '12px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <span className="cmd-badge" style={{ color: '#22d3ee' }}>QUICK START</span>
-            <span style={{ fontSize: '13px', fontWeight: 600 }}>
-              Press <kbd style={{ padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--mui-border-strong)', fontSize: '11px' }}>Ctrl+K</kbd> to jump anywhere
-            </span>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button className="mui-btn mui-btn-outlined mui-btn-sm" onClick={() => onNavigateView && onNavigateView('view-notes')}>
-                1. Write a Note
-              </button>
-              <button className="mui-btn mui-btn-outlined mui-btn-sm" onClick={() => onNavigateView && onNavigateView('view-chat')}>
-                2. Ask Copilot
-              </button>
-              <button className="mui-btn mui-btn-outlined mui-btn-sm" onClick={() => onNavigateView && onNavigateView('view-profile')}>
-                3. Enable 2FA
-              </button>
-            </div>
-          </div>
-          <button className="mui-btn-icon" onClick={dismissChecklist} title="Dismiss">
-            <span className="material-symbols-rounded icon-sm">close</span>
-          </button>
-        </div>
-      )}
-      {/* Voice Memo Bar */}
-      <div className="voice-memo-bar">
-        <div className="voice-memo-left">
-          <button
-            className={`btn-mic-pulse ${isVoiceMemoActive ? 'recording' : ''}`}
-            id="btn-voice-memo"
-            title="Click & Speak Voice Memo"
-            onClick={handleVoiceMemoToggle}
-          >
-            <span className="material-symbols-rounded icon-md">mic</span>
-          </button>
-          <div>
-            <strong>Quick AI Voice Memo</strong>
-            <p className="user-status" id="voice-memo-status">{voiceMemoStatus}</p>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {onOpenFocusModal && (
-            <button
-              className="mui-btn mui-btn-primary mui-btn-sm"
-              id="btn-today-deep-work"
-              onClick={onOpenFocusModal}
-              title="Launch Pomodoro Deep Work Focus Studio"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+      <PageContainer>
+        <PageHeader
+          overline="Today"
+          title={userName ? `${greeting()}, ${userName.split(' ')[0]}` : greeting()}
+          description="Here is what matters today."
+          actions={
+            <>
+              {onOpenFocusModal && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  id="btn-today-deep-work"
+                  onClick={onOpenFocusModal}
+                  startIcon={<Icon name="timer" size={18} />}
+                  sx={{ minHeight: 44 }}
+                >
+                  Start focus session
+                </Button>
+              )}
+              <Button
+                variant="outlined"
+                id="btn-refresh-briefing"
+                onClick={() => generateMorningBriefing()}
+                startIcon={<Icon name="sync" size={18} />}
+                sx={{ minHeight: 44 }}
+              >
+                Refresh briefing
+              </Button>
+            </>
+          }
+        />
+
+        {!checklistDismissed && (
+          <Card sx={{ p: 2, mb: 2.5, ...riseSx(1) }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
+              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flex: 1, minWidth: 0 }}>
+                <IconTile icon="rocket_launch" accent="cyan" size={36} />
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography variant="subtitle2">Get started</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Press{' '}
+                    <Box component="kbd" sx={{ px: 0.75, py: 0.25, borderRadius: 1, border: 1, borderColor: 'divider', fontSize: 12, fontFamily: 'inherit' }}>Ctrl+K</Box>{' '}
+                    to jump anywhere
+                  </Typography>
+                </Box>
+                <IconButton aria-label="Dismiss" onClick={dismissChecklist} sx={{ display: { md: 'none' }, width: 44, height: 44 }}>
+                  <Icon name="close" size={20} />
+                </IconButton>
+              </Stack>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Button size="small" variant="outlined" sx={{ minHeight: 40 }} onClick={() => onNavigateView && onNavigateView('view-notes')}>1. Write a note</Button>
+                <Button size="small" variant="outlined" sx={{ minHeight: 40 }} onClick={() => onNavigateView && onNavigateView('view-chat')}>2. Ask the assistant</Button>
+                <Button size="small" variant="outlined" sx={{ minHeight: 40 }} onClick={() => onNavigateView && onNavigateView('view-profile')}>3. Turn on 2-step sign-in</Button>
+              </Stack>
+              <IconButton aria-label="Dismiss" onClick={dismissChecklist} sx={{ display: { xs: 'none', md: 'inline-flex' }, width: 44, height: 44 }}>
+                <Icon name="close" size={20} />
+              </IconButton>
+            </Stack>
+          </Card>
+        )}
+
+        <Grid container spacing={2.5}>
+          {/* Briefing */}
+          <Grid size={{ xs: 12, lg: 8 }}>
+            <SectionCard
+              index={2}
+              icon="auto_awesome"
+              title="Your daily briefing"
+              subtitle={<span id="today-date-badge">{todayDateBadge}</span>}
+              sx={{ height: '100%' }}
             >
-              <span className="material-symbols-rounded icon-sm">timer</span>
-              <span>Deep Work Studio</span>
-            </button>
-          )}
-          <button
-            className="mui-btn mui-btn-outlined mui-btn-sm"
-            id="btn-refresh-briefing"
-            onClick={() => generateMorningBriefing()}
-          >
-            <span className="material-symbols-rounded icon-sm">sync</span>
-            <span>Refresh Briefing</span>
-          </button>
-        </div>
-      </div>
+              <Box id="daily-briefing-text" className="briefing-content" sx={{ color: 'text.primary', fontSize: 15, lineHeight: 1.7 }}>
+                {isBriefingLoading ? (
+                  <Stack direction="row" spacing={1.5} alignItems="center" className="ai-thinking-row">
+                    <Box className="ai-msg-avatar thinking-spin" sx={{ width: 24, height: 24 }}>
+                      <img src="/icon.svg" alt="Renim AI" />
+                    </Box>
+                    <Typography variant="body2" color="text.secondary" className="ai-thinking-status">{aiThinkingSteps[thinkingStepIndex]}</Typography>
+                    <div className="ai-typing-dots"><span></span><span></span><span></span></div>
+                  </Stack>
+                ) : (
+                  <div className="ai-markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(briefingText) }} />
+                )}
+              </Box>
+            </SectionCard>
+          </Grid>
 
-      {/* Quick Launchpad to New Features & Modules */}
-      {onNavigateView && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-          gap: '12px',
-          marginBottom: '20px'
-        }}>
-          <div
-            onClick={() => onNavigateView('view-calendar')}
-            style={{
-              padding: '12px 14px',
-              background: 'var(--mui-paper)',
-              border: '1px solid var(--mui-border)',
-              borderRadius: 'var(--radius-sm)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              transition: 'all 0.15s ease'
-            }}
-            title="Google Calendar 1-Click Sync & iCal Integration"
-          >
-            <span className="material-symbols-rounded" style={{ color: '#06b6d4', fontSize: '24px' }}>calendar_month</span>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '13px' }}>Google Calendar Sync</div>
-              <div className="user-status" style={{ fontSize: '11px' }}>1-Click Sync & iCal (.ics)</div>
-            </div>
-          </div>
-
-          <div
-            onClick={() => onOpenFocusModal?.()}
-            style={{
-              padding: '12px 14px',
-              background: 'var(--mui-paper)',
-              border: '1px solid var(--mui-border)',
-              borderRadius: 'var(--radius-sm)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              transition: 'all 0.15s ease'
-            }}
-            title="Pomodoro Deep Work & Procedural Ambient Sounds"
-          >
-            <span className="material-symbols-rounded" style={{ color: '#10b981', fontSize: '24px' }}>timer</span>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '13px' }}>AI Deep Work Focus</div>
-              <div className="user-status" style={{ fontSize: '11px' }}>25m/50m + Ambient Sounds</div>
-            </div>
-          </div>
-
-          <div
-            onClick={() => onNavigateView('view-tasks')}
-            style={{
-              padding: '12px 14px',
-              background: 'var(--mui-paper)',
-              border: '1px solid var(--mui-border)',
-              borderRadius: 'var(--radius-sm)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              transition: 'all 0.15s ease'
-            }}
-            title="Kanban Board with Drag & Drop & Sprint Velocity"
-          >
-            <span className="material-symbols-rounded" style={{ color: '#818cf8', fontSize: '24px' }}>view_kanban</span>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '13px' }}>Kanban Sprint Board</div>
-              <div className="user-status" style={{ fontSize: '11px' }}>Drag & Drop + AI Subtasks</div>
-            </div>
-          </div>
-
-          <div
-            onClick={() => onNavigateView('view-settings')}
-            style={{
-              padding: '12px 14px',
-              background: 'var(--mui-paper)',
-              border: '1px solid var(--mui-border)',
-              borderRadius: 'var(--radius-sm)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              transition: 'all 0.15s ease'
-            }}
-            title="Web Push Notifications & Resend Email Alerts"
-          >
-            <span className="material-symbols-rounded" style={{ color: '#f59e0b', fontSize: '24px' }}>notifications_active</span>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '13px' }}>Push & Email Alerts</div>
-              <div className="user-status" style={{ fontSize: '11px' }}>Web Push + Resend Delivery</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI Morning Briefing Card */}
-      <div className="briefing-banner">
-        <div className="briefing-header">
-          <div className="briefing-title">
-            <span className="material-symbols-rounded">auto_awesome</span>
-            <span>AI Executive Morning Briefing</span>
-          </div>
-          <span className="brand-version" id="today-date-badge">{todayDateBadge}</span>
-        </div>
-        <div className="briefing-content" id="daily-briefing-text">
-          {isBriefingLoading ? (
-            <div className="ai-thinking-row">
-              <div className="ai-msg-avatar thinking-spin" style={{ width: '24px', height: '24px' }}>
-                <img src="/icon.svg" alt="Renim AI" />
-              </div>
-              <span className="ai-thinking-status">{aiThinkingSteps[thinkingStepIndex]}</span>
-              <div className="ai-typing-dots">
-                <span></span><span></span><span></span>
-              </div>
-            </div>
-          ) : (
-            <div
-              className="ai-markdown-body"
-              dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(briefingText) }}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Today's 2-Column Grid */}
-      <div className="today-grid">
-        {/* Column 1: Today's High Priority Tasks */}
-        <div className="mui-card">
-          <div className="mui-card-header">
-            <h3 className="mui-card-title">
-              <span className="material-symbols-rounded">priority_high</span>
-              <span>Priority Focus Tasks</span>
-            </h3>
-            <button
-              className="mui-btn mui-btn-outlined mui-btn-sm"
-              id="btn-today-add-task"
-              onClick={() => setShowTaskModal(true)}
-            >
-              <span className="material-symbols-rounded icon-sm">add</span>
-              <span>Add Task</span>
-            </button>
-          </div>
-          <div id="today-tasks-list">
-            {pendingTasks.length === 0 ? (
-              <p className="user-status">All caught up! No urgent tasks.</p>
-            ) : (
-              pendingTasks.slice(0, 5).map(t => (
-                <div key={t.id} className="task-item-row" data-task-id={t.id}>
-                  <div className="task-left">
-                    <input
-                      type="checkbox"
-                      className="mui-checkbox task-check"
-                      checked={t.status === 'done'}
-                      onChange={() => handleToggleTask(t.id, t.status)}
-                    />
-                    <span className={`task-title ${t.status === 'done' ? 'done' : ''}`}>
-                      {t.title}
-                    </span>
-                  </div>
-                  <span className={`priority-badge priority-${(t.priority || 'medium').toLowerCase()}`}>
-                    {t.priority}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Column 2: Today's Schedule */}
-        <div className="mui-card">
-          <div className="mui-card-header">
-            <h3 className="mui-card-title">
-              <span className="material-symbols-rounded">schedule</span>
-              <span>Today's Schedule</span>
-            </h3>
-            <button
-              className="mui-btn mui-btn-outlined mui-btn-sm"
-              id="btn-today-add-event"
-              onClick={() => setShowEventModal(true)}
-            >
-              <span className="material-symbols-rounded icon-sm">add</span>
-            </button>
-          </div>
-          <div id="today-schedule-list">
-            {todayEvents.length === 0 ? (
-              <p className="user-status">No events scheduled for today.</p>
-            ) : (
-              todayEvents.map(e => (
-                <div
-                  key={e.id}
-                  style={{
-                    padding: '8px',
-                    background: 'var(--mui-surface)',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--mui-border)',
-                    marginBottom: '6px',
-                    display: 'flex',
-                    justifyContent: 'space-between'
+          {/* Voice memo */}
+          <Grid size={{ xs: 12, lg: 4 }}>
+            <SectionCard index={3} icon="mic" accent="violet" title="Voice memo" subtitle="Speak a quick note" sx={{ height: '100%' }}>
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Box
+                  component="button"
+                  type="button"
+                  id="btn-voice-memo"
+                  aria-label={isVoiceMemoActive ? 'Stop voice memo' : 'Start voice memo'}
+                  aria-pressed={isVoiceMemoActive}
+                  className={`btn-mic-pulse ${isVoiceMemoActive ? 'recording' : ''}`}
+                  onClick={handleVoiceMemoToggle}
+                  sx={{
+                    width: 56, height: 56, borderRadius: '50%', border: 0, cursor: 'pointer', flex: 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    bgcolor: isVoiceMemoActive ? 'error.main' : 'primary.main',
+                    color: isVoiceMemoActive ? 'error.contrastText' : 'primary.contrastText',
+                    transition: 'background-color .25s ease, transform .2s ease',
+                    '&:hover': { transform: 'scale(1.05)' },
                   }}
                 >
-                  <div>
-                    <strong>{e.title}</strong>
-                    <div className="user-status">
-                      {e.start_time.slice(0, 5)} • {e.category}
-                    </div>
-                  </div>
-                  <span className={`cal-event-chip chip-${(e.category || 'work').toLowerCase()}`}>
-                    {e.category}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
+                  <Icon name={isVoiceMemoActive ? 'stop' : 'mic'} size={26} />
+                </Box>
+                <Typography variant="body2" color="text.secondary" id="voice-memo-status" className="user-status" sx={{ minWidth: 0 }}>
+                  {voiceMemoStatus}
+                </Typography>
+              </Stack>
+            </SectionCard>
+          </Grid>
+
+          {/* Stats */}
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <StatCard index={4} icon="task_alt" accent="indigo" label="Open tasks" value={pendingTasks.length} />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <StatCard index={5} icon="event" accent="cyan" label="Events today" value={todayEvents.length} />
+          </Grid>
+
+          {/* Priority tasks */}
+          <Grid size={{ xs: 12, md: 6 }}>
+            <SectionCard
+              index={6}
+              icon="flag"
+              accent="red"
+              title="Priority tasks"
+              subtitle={pendingTasks.length > 5 ? `Top 5 of ${pendingTasks.length}` : undefined}
+              sx={{ height: '100%' }}
+              action={
+                <Button size="small" variant="outlined" id="btn-today-add-task" onClick={() => setShowTaskModal(true)} startIcon={<Icon name="add" size={18} />} sx={{ minHeight: 40 }}>
+                  Add
+                </Button>
+              }
+            >
+              <Box id="today-tasks-list">
+                {pendingTasks.length === 0 ? (
+                  <EmptyState icon="celebration" title="All caught up" description="No urgent tasks right now." />
+                ) : (
+                  <Stack divider={<Box sx={{ borderTop: 1, borderColor: 'divider' }} />}>
+                    {pendingTasks.slice(0, 5).map(t => (
+                      <Stack key={t.id} direction="row" alignItems="center" spacing={1} data-task-id={t.id} sx={{ py: 0.5, minHeight: 48 }}>
+                        <Checkbox
+                          checked={t.status === 'done'}
+                          onChange={() => handleToggleTask(t.id, t.status)}
+                          inputProps={{ 'aria-label': `Mark ${t.title} as done` }}
+                          color="secondary"
+                        />
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            flex: 1, minWidth: 0, fontWeight: 500, overflowWrap: 'anywhere',
+                            textDecoration: t.status === 'done' ? 'line-through' : 'none',
+                            color: t.status === 'done' ? 'text.secondary' : 'text.primary',
+                            transition: 'color .2s ease',
+                          }}
+                        >
+                          {t.title}
+                        </Typography>
+                        {t.priority && <Chip size="small" label={t.priority} color={priorityColor(t.priority)} variant="outlined" />}
+                      </Stack>
+                    ))}
+                  </Stack>
+                )}
+              </Box>
+            </SectionCard>
+          </Grid>
+
+          {/* Schedule */}
+          <Grid size={{ xs: 12, md: 6 }}>
+            <SectionCard
+              index={7}
+              icon="schedule"
+              accent="cyan"
+              title="Today's schedule"
+              sx={{ height: '100%' }}
+              action={
+                <IconButton id="btn-today-add-event" aria-label="Add event" onClick={() => setShowEventModal(true)} sx={{ width: 44, height: 44, border: 1, borderColor: 'divider' }}>
+                  <Icon name="add" size={20} />
+                </IconButton>
+              }
+            >
+              <Box id="today-schedule-list">
+                {todayEvents.length === 0 ? (
+                  <EmptyState icon="event_available" title="Nothing scheduled" description="Your day is open." />
+                ) : (
+                  <Stack spacing={1}>
+                    {todayEvents.map(e => (
+                      <Stack key={e.id} direction="row" spacing={2} alignItems="center" sx={{ p: 1.5, borderRadius: 3, bgcolor: 'action.hover' }}>
+                        <Typography sx={{ width: 52, flex: 'none', fontWeight: 700, fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>
+                          {e.start_time.slice(0, 5)}
+                        </Typography>
+                        <Box sx={{ width: 3, alignSelf: 'stretch', borderRadius: 2, bgcolor: 'secondary.main', flex: 'none' }} />
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{e.title}</Typography>
+                          <Typography variant="caption" color="text.secondary">{e.category}</Typography>
+                        </Box>
+                      </Stack>
+                    ))}
+                  </Stack>
+                )}
+              </Box>
+            </SectionCard>
+          </Grid>
+
+          {/* Quick actions */}
+          {quickActions.map((q, i) => (
+            <Grid key={q.title} size={{ xs: 12, sm: 6, lg: 3 }}>
+              <Card
+                component="button"
+                type="button"
+                onClick={q.onClick}
+                sx={{ width: '100%', p: 2, display: 'flex', alignItems: 'center', gap: 1.5, textAlign: 'left', font: 'inherit', color: 'inherit', bgcolor: 'background.paper', ...hoverCard, ...riseSx(8 + i) }}
+              >
+                <IconTile icon={q.icon} accent={q.accent} />
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography variant="subtitle2">{q.title}</Typography>
+                  <Typography variant="caption" color="text.secondary">{q.hint}</Typography>
+                </Box>
+                <Icon name="arrow_forward" size={18} sx={{ opacity: 0.5 }} />
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      </PageContainer>
     </div>
   );
 };

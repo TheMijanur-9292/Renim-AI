@@ -1,4 +1,7 @@
 import React from 'react';
+import { Box, Button, Divider, IconButton, InputAdornment, MenuItem, Stack, Switch, Tab, Tabs, TextField, Typography } from '@mui/material';
+import { Icon, PageContainer, PageHeader, SectionCard, riseSx } from '../ui';
+
 
 export interface SettingsViewProps {
   isActive: boolean;
@@ -51,252 +54,224 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   eventsCount,
   meetingsCount,
 }) => {
+  const [tab, setTab] = React.useState(0);
+  const [showKey, setShowKey] = React.useState(false);
+
+  const handlePreset = (val: string) => {
+    setCfgAiModel(val);
+    if (val === 'qwen2.5') {
+      setCfgAiUrl('https://2c-aim-api.2coms.com/v1');
+    } else if (val === 'deepseek-chat') {
+      setCfgAiUrl('https://api.deepseek.com/v1');
+    } else if (val === 'deepseek-reasoner') {
+      setCfgAiUrl('https://api.deepseek.com/v1');
+    } else if (val === 'claude-3-5-sonnet-20241022') {
+      setCfgAiUrl('https://api.anthropic.com/v1');
+    } else if (val === 'gpt-4o') {
+      setCfgAiUrl('https://api.openai.com/v1');
+    }
+  };
+  const presetValues = ['qwen2.5', 'deepseek-chat', 'deepseek-reasoner', 'gpt-4o', 'claude-3-5-sonnet-20241022', 'custom'];
+
+  const tabs = [
+    { label: 'AI assistant', icon: 'auto_awesome' },
+    { label: 'Notifications', icon: 'notifications' },
+    { label: 'Backup & export', icon: 'cloud_download' },
+    { label: 'Data & plan', icon: 'database' },
+  ];
+
   return (
     <div id="view-settings" className={`view-container ${isActive ? 'active' : ''}`}>
-      <div className="tasks-container">
-        <div className="mui-card" style={{ marginBottom: '20px' }}>
-          <h3 className="mui-card-title" style={{ marginBottom: '16px' }}>
-            <span className="material-symbols-rounded">database</span>
-            <span>Neon Cloud PostgreSQL Database (FastAPI Async Pool)</span>
-          </h3>
-          <div className="mui-input-group">
-            <label htmlFor="cfg-sb-url">Neon Database Connection Endpoint</label>
-            <input
-              type="text"
-              id="cfg-sb-url"
-              className="mui-input"
-              readOnly
-              value={cfgSbUrl}
-            />
-          </div>
-          <div className="mui-input-group">
-            <label htmlFor="cfg-sb-anon">Database Status</label>
-            <input
-              type="text"
-              id="cfg-sb-anon"
-              className="mui-input"
-              readOnly
-              value={cfgSbAnon}
-            />
-          </div>
-        </div>
+      <PageContainer>
+        <PageHeader overline="Workspace" title="Settings" description="Choose your AI assistant, alerts and backups." />
 
-        <div className="mui-card" style={{ marginBottom: '20px' }}>
-          <h3 className="mui-card-title" style={{ marginBottom: '16px' }}>
-            <span className="material-symbols-rounded">bolt</span>
-            <span>AI Engine & BYOK (Bring Your Own Key)</span>
-          </h3>
-
-          <div className="mui-input-group">
-            <label>Select AI Engine Preset</label>
-            <select
-              className="mui-input"
-              value={cfgAiModel}
-              onChange={e => {
-                const val = e.target.value;
-                setCfgAiModel(val);
-                if (val === 'qwen2.5') {
-                  setCfgAiUrl('https://2c-aim-api.2coms.com/v1');
-                } else if (val === 'deepseek-chat') {
-                  setCfgAiUrl('https://api.deepseek.com/v1');
-                } else if (val === 'deepseek-reasoner') {
-                  setCfgAiUrl('https://api.deepseek.com/v1');
-                } else if (val === 'claude-3-5-sonnet-20241022') {
-                  setCfgAiUrl('https://api.anthropic.com/v1');
-                } else if (val === 'gpt-4o') {
-                  setCfgAiUrl('https://api.openai.com/v1');
-                }
-              }}
-            >
-              <option value="qwen2.5">Qwen 2.5 72B (2Coms AIM - Active Default)</option>
-              <option value="deepseek-chat">DeepSeek V3 (Reasoning & Speed)</option>
-              <option value="deepseek-reasoner">DeepSeek R1 (Deep CoT Thinking)</option>
-              <option value="gpt-4o">OpenAI GPT-4o (Omni Multimodal)</option>
-              <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Anthropic)</option>
-              <option value="custom">Custom AI Endpoint</option>
-            </select>
-            <span className="user-status" style={{ fontSize: '11px', marginTop: '4px', display: 'block' }}>
-              Switch between 2Coms internal cluster or bring your own API key for DeepSeek, OpenAI, or Claude.
-            </span>
-          </div>
-
-          <div className="mui-input-group">
-            <label htmlFor="cfg-ai-url">AI Gateway Base URL</label>
-            <input
-              type="url"
-              id="cfg-ai-url"
-              className="mui-input"
-              placeholder="https://2c-aim-api.2coms.com/v1"
-              value={cfgAiUrl}
-              onChange={e => setCfgAiUrl(e.target.value)}
-            />
-          </div>
-          <div className="mui-input-group">
-            <label htmlFor="cfg-ai-key">AI Gateway API Key</label>
-            <input
-              type="password"
-              id="cfg-ai-key"
-              className="mui-input"
-              placeholder="twocoms_dev_z0_q6r3"
-              value={cfgAiKey}
-              onChange={e => setCfgAiKey(e.target.value)}
-            />
-          </div>
-          <div className="mui-input-group">
-            <label htmlFor="cfg-ai-model">Model Identifier</label>
-            <input
-              type="text"
-              id="cfg-ai-model"
-              className="mui-input"
-              placeholder="qwen2.5"
-              value={cfgAiModel}
-              onChange={e => setCfgAiModel(e.target.value)}
-            />
-          </div>
-          <button
-            className="mui-btn mui-btn-primary"
-            id="btn-save-settings"
-            style={{ marginTop: '10px' }}
-            onClick={handleSaveSettings}
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3, ...riseSx(1) }}>
+          <Tabs
+            value={tab}
+            onChange={(_, v) => setTab(v)}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            aria-label="Settings sections"
           >
-            Save Configuration
-          </button>
-        </div>
+            {tabs.map((t) => (
+              <Tab key={t.label} icon={<Icon name={t.icon} size={18} />} iconPosition="start" label={t.label} sx={{ minHeight: 48 }} />
+            ))}
+          </Tabs>
+        </Box>
 
-        {/* Real-time Push & Resend Email Notifications Card */}
-        <div className="mui-card" style={{ marginBottom: '20px' }}>
-          <div className="mui-card-header" style={{ marginBottom: '12px' }}>
-            <h3 className="mui-card-title">
-              <span className="material-symbols-rounded">notifications_active</span>
-              <span>Alerts & Notifications (Web Push + Resend Email)</span>
-            </h3>
-          </div>
-          <p className="user-status" style={{ marginBottom: '14px' }}>
-            Enable desktop Web Push notifications for 15-minute event countdown alerts, and connect Resend API for instant email reminders to your inbox.
-          </p>
-
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className={`mui-btn ${isPushEnabled ? 'mui-btn-primary' : 'mui-btn-outlined'}`}
-              onClick={handleTogglePushNotifications}
-            >
-              <span className="material-symbols-rounded icon-sm">
-                {isPushEnabled ? 'notifications_active' : 'notifications_off'}
-              </span>
-              <span>
-                {isPushEnabled ? 'Browser Push: Enabled (Click to Turn Off)' : 'Browser Push: Disabled (Click to Enable)'}
-              </span>
-            </button>
-            {isPWAInstallable && (
-              <button
-                type="button"
-                className="mui-btn mui-btn-outlined"
-                onClick={handleInstallPWA}
+        {tab === 0 && (
+          <SectionCard index={2} icon="auto_awesome" accent="violet" title="AI assistant" subtitle="Pick a preset or connect your own provider.">
+            <Stack spacing={2.25}>
+              <TextField
+                select
+                label="Preset"
+                value={presetValues.includes(cfgAiModel) ? cfgAiModel : 'custom'}
+                onChange={(e) => handlePreset(e.target.value)}
+                helperText="Use the built-in assistant, or bring your own key."
+                fullWidth
               >
-                <span className="material-symbols-rounded icon-sm">install_mobile</span>
-                <span>Install PWA App</span>
-              </button>
-            )}
-          </div>
-          <span className="user-status" style={{ fontSize: '11px', marginBottom: '16px', display: 'block' }}>
-            System Status: {isPushEnabled ? 'Alerts are ACTIVE. Desktop pop-ups will fire 15 mins before events.' : 'Alerts are MUTED. Click above to reactivate.'}
-          </span>
-
-          <div className="mui-input-group">
-            <label htmlFor="cfg-resend-key">Resend API Key (Optional for Real Email Delivery)</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input
-                type="password"
-                id="cfg-resend-key"
-                className="mui-input"
-                placeholder="re_xxxxxxxxxxxxxxxxxxxx"
-                value={resendApiKey}
-                onChange={e => setResendApiKey(e.target.value)}
-              />
-              <button
-                type="button"
-                className="mui-btn mui-btn-primary"
-                onClick={() => {
-                  localStorage.setItem('renim_resend_api_key', resendApiKey);
-                  showToast('Resend API Key saved locally!', 'success');
+                <MenuItem value="qwen2.5">Built-in assistant (default)</MenuItem>
+                <MenuItem value="deepseek-chat">DeepSeek V3 (fast)</MenuItem>
+                <MenuItem value="deepseek-reasoner">DeepSeek R1 (deep reasoning)</MenuItem>
+                <MenuItem value="gpt-4o">OpenAI GPT-4o</MenuItem>
+                <MenuItem value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</MenuItem>
+                <MenuItem value="custom">Custom provider</MenuItem>
+              </TextField>
+              <Box sx={{ display: 'grid', gap: 2.25, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
+                <TextField
+                  id="cfg-ai-url"
+                  type="url"
+                  label="AI provider URL"
+                  placeholder="https://api.example.com/v1"
+                  value={cfgAiUrl}
+                  onChange={(e) => setCfgAiUrl(e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  id="cfg-ai-model"
+                  label="Model"
+                  placeholder="Model name"
+                  value={cfgAiModel}
+                  onChange={(e) => setCfgAiModel(e.target.value)}
+                  fullWidth
+                />
+              </Box>
+              <TextField
+                id="cfg-ai-key"
+                type={showKey ? 'text' : 'password'}
+                label="API key"
+                placeholder="Paste your key"
+                value={cfgAiKey}
+                onChange={(e) => setCfgAiKey(e.target.value)}
+                fullWidth
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton aria-label={showKey ? 'Hide API key' : 'Show API key'} onClick={() => setShowKey((v) => !v)} edge="end">
+                          <Icon name={showKey ? 'visibility_off' : 'visibility'} />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
                 }}
-              >
-                Save Key
-              </button>
-            </div>
-            <span className="user-status" style={{ fontSize: '11px', marginTop: '4px', display: 'block' }}>
-              If empty, Renim AI will still record and preview email alerts smoothly. Get your free key at resend.com.
-            </span>
-          </div>
-        </div>
+              />
+              <Box>
+                <Button id="btn-save-settings" variant="contained" color="primary" size="large" onClick={handleSaveSettings} startIcon={<Icon name="save" />}>
+                  Save
+                </Button>
+              </Box>
+            </Stack>
+          </SectionCard>
+        )}
 
-        {/* Second Brain Data Backup & Full Export Card */}
-        <div className="mui-card" style={{ marginBottom: '20px' }}>
-          <div className="mui-card-header" style={{ marginBottom: '12px' }}>
-            <h3 className="mui-card-title">
-              <span className="material-symbols-rounded">cloud_download</span>
-              <span>Second Brain Data Backup & Export (Offline Archive)</span>
-            </h3>
-          </div>
-          <p className="user-status" style={{ marginBottom: '14px' }}>
-            Download comprehensive, 100% portable backups of your entire workspace (Smart Notes, Sprint Tasks, Calendar Agenda, and Meeting Intelligence).
-          </p>
+        {tab === 1 && (
+          <SectionCard index={2} icon="notifications_active" accent="amber" title="Alerts & reminders" subtitle="Get notified 15 minutes before events.">
+            <Stack spacing={2.5}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2} sx={{ p: 2, borderRadius: 3, border: 1, borderColor: 'divider' }}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="subtitle2">Browser notifications</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {isPushEnabled ? 'On. You will get a pop-up before each event.' : 'Off. Turn on to get event pop-ups.'}
+                  </Typography>
+                </Box>
+                <Switch
+                  checked={isPushEnabled}
+                  onChange={handleTogglePushNotifications}
+                  color="secondary"
+                  slotProps={{ input: { 'aria-label': 'Browser notifications' } }}
+                />
+              </Stack>
 
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="mui-btn mui-btn-primary"
-              onClick={handleExportFullJsonArchive}
-              title="Download complete JSON archive for offline storage or migration"
-            >
-              <span className="material-symbols-rounded icon-sm">data_object</span>
-              <span>Full JSON Backup</span>
-            </button>
+              {isPWAInstallable && (
+                <Box>
+                  <Button variant="outlined" onClick={handleInstallPWA} startIcon={<Icon name="install_mobile" />}>
+                    Install app
+                  </Button>
+                </Box>
+              )}
 
-            <button
-              type="button"
-              className="mui-btn mui-btn-outlined"
-              onClick={handleExportMarkdownArchive}
-              title="Download consolidated Markdown archive of all notes & deliverables"
-            >
-              <span className="material-symbols-rounded icon-sm">markdown</span>
-              <span>Structured Markdown Archive</span>
-            </button>
+              <Divider />
 
-            <button
-              type="button"
-              className="mui-btn mui-btn-outlined"
-              onClick={() => window.print()}
-              title="Print or Save Workspace Overview as PDF"
-            >
-              <span className="material-symbols-rounded icon-sm">print</span>
-              <span>Executive Print / PDF</span>
-            </button>
-          </div>
-          <span className="user-status" style={{ fontSize: '11px', marginTop: '10px', display: 'block' }}>
-            Archive includes {notesCount} notes, {tasksCount} tasks, {eventsCount} events, and {meetingsCount} meeting logs.
-          </span>
-        </div>
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Email reminders (optional)</Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'flex-start' }}>
+                  <TextField
+                    id="cfg-resend-key"
+                    type="password"
+                    label="Email service key (Resend)"
+                    placeholder="re_xxxxxxxxxxxx"
+                    value={resendApiKey}
+                    onChange={(e) => setResendApiKey(e.target.value)}
+                    helperText="Leave empty to preview reminders without sending email."
+                    fullWidth
+                  />
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    sx={{ minHeight: 56, flex: 'none' }}
+                    onClick={() => {
+                      localStorage.setItem('renim_resend_api_key', resendApiKey);
+                      showToast('Email key saved on this device.', 'success');
+                    }}
+                  >
+                    Save key
+                  </Button>
+                </Stack>
+              </Box>
+            </Stack>
+          </SectionCard>
+        )}
 
-        <div className="mui-card" style={{ marginBottom: '20px' }}>
-          <h3 className="mui-card-title" style={{ marginBottom: '12px' }}>
-            <span className="material-symbols-rounded">storefront</span>
-            <span>Product & Pricing Overview</span>
-          </h3>
-          <p className="user-status" style={{ marginBottom: '14px' }}>
-            View the official Renim AI SaaS landing page, pricing plans, and public feature roadmap.
-          </p>
-          <a
-            href="/"
-            className="mui-btn mui-btn-outlined"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}
-          >
-            <span className="material-symbols-rounded icon-sm">open_in_new</span>
-            <span>Open Product Homepage & Pricing</span>
-          </a>
-        </div>
-      </div>
+        {tab === 2 && (
+          <SectionCard index={2} icon="cloud_download" accent="green" title="Backup & export" subtitle="Download a copy of everything in your workspace.">
+            <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }, mb: 2.5 }}>
+              {[
+                { label: 'Notes', value: notesCount, icon: 'description' },
+                { label: 'Tasks', value: tasksCount, icon: 'task_alt' },
+                { label: 'Events', value: eventsCount, icon: 'event' },
+                { label: 'Meetings', value: meetingsCount, icon: 'groups' },
+              ].map((s, i) => (
+                <Box key={s.label} sx={{ p: 1.75, borderRadius: 3, border: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1.25, ...riseSx(i + 3) }}>
+                  <Icon name={s.icon} sx={{ color: 'text.secondary' }} />
+                  <Box>
+                    <Typography sx={{ fontWeight: 800, fontSize: 20, lineHeight: 1.1 }}>{s.value}</Typography>
+                    <Typography variant="caption" color="text.secondary">{s.label}</Typography>
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} useFlexGap flexWrap="wrap">
+              <Button variant="contained" color="primary" onClick={handleExportFullJsonArchive} startIcon={<Icon name="data_object" />} title="Download a complete JSON backup">
+                Full backup (JSON)
+              </Button>
+              <Button variant="outlined" onClick={handleExportMarkdownArchive} startIcon={<Icon name="article" />} title="Download notes as Markdown">
+                Markdown export
+              </Button>
+              <Button variant="outlined" onClick={() => window.print()} startIcon={<Icon name="print" />} title="Print or save as PDF">
+                Print / PDF
+              </Button>
+            </Stack>
+          </SectionCard>
+        )}
+
+        {tab === 3 && (
+          <Stack spacing={2.5}>
+            <SectionCard index={2} icon="database" accent="indigo" title="Data storage" subtitle="Where your workspace is saved. Read only.">
+              <Box sx={{ display: 'grid', gap: 2.25, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
+                <TextField id="cfg-sb-url" label="Storage address" value={cfgSbUrl} fullWidth slotProps={{ input: { readOnly: true } }} />
+                <TextField id="cfg-sb-anon" label="Status" value={cfgSbAnon} fullWidth slotProps={{ input: { readOnly: true } }} />
+              </Box>
+            </SectionCard>
+            <SectionCard index={3} icon="storefront" accent="cyan" title="Plans & pricing" subtitle="See plans, pricing and what is coming next.">
+              <Button component="a" href="/" variant="outlined" startIcon={<Icon name="open_in_new" />}>
+                Open homepage
+              </Button>
+            </SectionCard>
+          </Stack>
+        )}
+      </PageContainer>
     </div>
   );
 };

@@ -12,6 +12,53 @@ import {
   type SuperAdminUserItem,
   type SuperAdminUserDetails,
 } from '../../services/superadmin';
+import {
+  Avatar,
+  Box,
+  Button,
+  Card,
+  Chip,
+  CircularProgress,
+  IconButton,
+  MenuItem,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TextField,
+  Tooltip,
+  Typography
+} from '@mui/material';
+import { EmptyState, Icon, PageContainer, PageHeader, SectionCard, StatCard, riseSx } from '../ui';
+
+const ROLE_LABEL: Record<string, string> = { user: 'User', admin: 'Admin', superadmin: 'Super Admin' };
+
+const StatusChip: React.FC<{ active: boolean }> = ({ active }) => (
+  <Chip
+    size="small"
+    label={active ? 'Active' : 'Suspended'}
+    color={active ? 'success' : 'error'}
+    variant="outlined"
+    icon={<Icon name={active ? 'check_circle' : 'block'} size={14} />}
+    sx={{ fontWeight: 700 }}
+  />
+);
+
+const UserAvatar: React.FC<{ url: string; name: string; size: number }> = ({ url, name, size }) => {
+  const isImg = url.startsWith('http') || url.startsWith('data:image');
+  return (
+    <Avatar
+      src={isImg ? url : undefined}
+      alt={name}
+      sx={{ width: size, height: size, bgcolor: 'primary.main', color: 'primary.contrastText', fontWeight: 800, fontSize: size * 0.4 }}
+    >
+      {isImg ? null : url || name.charAt(0).toUpperCase()}
+    </Avatar>
+  );
+};
+
 
 interface SuperAdminViewProps {
   adminEmail: string;
@@ -164,38 +211,30 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ adminEmail, show
   if (selectedDetails) {
     const p = selectedDetails.profile;
     const s = selectedDetails.stats;
-    const isImg = p.avatar_url.startsWith('http') || p.avatar_url.startsWith('data:image');
+
+    const metaItems: { icon: string; text: string }[] = [
+      ...(p.location ? [{ icon: 'location_on', text: p.location }] : []),
+      ...(p.phone ? [{ icon: 'call', text: p.phone }] : []),
+      { icon: 'schedule', text: `${p.timezone} (${p.working_hours})` },
+      { icon: 'smart_toy', text: p.ai_persona_preference },
+    ];
 
     return (
       <div id="view-superadmin" className="view-container active">
-        <div style={{ maxWidth: '1160px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-            <button
-              type="button"
-              className="mui-btn mui-btn-outlined mui-btn-sm"
-              onClick={() => setSelectedDetails(null)}
-            >
-              <span className="material-symbols-rounded icon-sm">arrow_back</span>
-              <span>Back to All Users</span>
-            </button>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className="mui-btn mui-btn-outlined mui-btn-sm"
-                onClick={() => setResetTarget({ id: p.id, email: p.email })}
-              >
-                <span className="material-symbols-rounded icon-sm">key</span>
-                <span>Reset Password</span>
-              </button>
+        <PageContainer>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" useFlexGap spacing={1.5} sx={{ mb: 3, ...riseSx(0) }}>
+            <Button variant="text" startIcon={<Icon name="arrow_back" />} onClick={() => setSelectedDetails(null)}>
+              All users
+            </Button>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Button variant="outlined" startIcon={<Icon name="key" />} onClick={() => setResetTarget({ id: p.id, email: p.email })}>
+                Reset password
+              </Button>
               {p.email !== adminEmail && (
-                <button
-                  type="button"
-                  className="mui-btn mui-btn-sm"
-                  style={{
-                    background: p.is_active ? 'rgba(239, 68, 68, 0.16)' : 'rgba(16, 185, 129, 0.18)',
-                    color: p.is_active ? '#f87171' : '#34d399',
-                    border: '1px solid currentColor',
-                  }}
+                <Button
+                  variant="outlined"
+                  color={p.is_active ? 'error' : 'success'}
+                  startIcon={<Icon name={p.is_active ? 'block' : 'check_circle'} />}
                   onClick={() =>
                     handleToggleStatus({
                       id: p.id,
@@ -204,568 +243,380 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ adminEmail, show
                     } as SuperAdminUserItem)
                   }
                 >
-                  {p.is_active ? 'Suspend Account' : 'Activate Account'}
-                </button>
+                  {p.is_active ? 'Suspend account' : 'Activate account'}
+                </Button>
               )}
-            </div>
-          </div>
+            </Stack>
+          </Stack>
 
           {/* User Profile Hero */}
-          <div
-            className="mui-card"
-            style={{
-              background: 'linear-gradient(135deg, rgba(6,182,212,0.12), rgba(99,102,241,0.12))',
-              borderColor: 'rgba(6, 182, 212, 0.35)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-              <div
-                style={{
-                  width: '72px',
-                  height: '72px',
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #06b6d4, #6366f1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#fff',
-                  fontSize: isImg ? '0px' : '28px',
-                  fontWeight: 800,
-                  overflow: 'hidden',
-                  flexShrink: 0,
-                }}
-              >
-                {isImg ? (
-                  <img src={p.avatar_url} alt={p.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  p.avatar_url || p.full_name.charAt(0).toUpperCase()
-                )}
-              </div>
-              <div style={{ flex: 1, minWidth: '220px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <h2 style={{ margin: 0, fontSize: '21px' }}>{p.full_name}</h2>
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      padding: '3px 10px',
-                      borderRadius: '999px',
-                      background: p.is_superadmin ? 'rgba(245, 158, 11, 0.2)' : 'rgba(6, 182, 212, 0.18)',
-                      color: p.is_superadmin ? '#fbbf24' : '#22d3ee',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    {p.role}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      padding: '3px 10px',
-                      borderRadius: '999px',
-                      background: p.is_active ? 'rgba(16, 185, 129, 0.18)' : 'rgba(239, 68, 68, 0.18)',
-                      color: p.is_active ? '#34d399' : '#f87171',
-                    }}
-                  >
-                    {p.is_active ? 'Active' : 'Suspended'}
-                  </span>
-                </div>
-                <div style={{ fontSize: '13px', opacity: 0.85, marginTop: '4px' }}>
-                  {p.email} {p.job_title ? `• ${p.job_title}` : ''} {p.department ? `• ${p.department}` : ''}
-                </div>
-                <div style={{ fontSize: '12px', opacity: 0.7, marginTop: '4px' }}>
-                  {p.location ? `📍 ${p.location} • ` : ''}
-                  {p.phone ? `📞 ${p.phone} • ` : ''}
-                  🕒 {p.timezone} ({p.working_hours}) • 🤖 {p.ai_persona_preference}
-                </div>
-                {p.bio && <p style={{ fontSize: '13px', marginTop: '8px', marginBottom: 0, opacity: 0.9 }}>{p.bio}</p>}
-              </div>
-            </div>
-          </div>
+          <Card sx={{ p: { xs: 2.5, sm: 3 }, mb: 2.5, ...riseSx(1) }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2.5} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+              <UserAvatar url={p.avatar_url} name={p.full_name} size={72} />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Typography variant="h5" component="h1" sx={{ fontWeight: 800 }}>{p.full_name}</Typography>
+                  <Chip size="small" label={ROLE_LABEL[p.role] || p.role} color={p.is_superadmin ? 'warning' : 'secondary'} sx={{ fontWeight: 700 }} />
+                  <StatusChip active={p.is_active} />
+                </Stack>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>
+                  {p.email} {p.job_title ? `· ${p.job_title}` : ''} {p.department ? `· ${p.department}` : ''}
+                </Typography>
+                <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap sx={{ mt: 1, color: 'text.secondary' }}>
+                  {metaItems.map((m) => (
+                    <Stack key={m.icon} direction="row" spacing={0.5} alignItems="center">
+                      <Icon name={m.icon} size={16} />
+                      <Typography variant="caption">{m.text}</Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+                {p.bio && <Typography variant="body2" sx={{ mt: 1.25 }}>{p.bio}</Typography>}
+              </Box>
+            </Stack>
+          </Card>
 
           {/* User Stats Grid */}
-          <div className="mui-grid-3" style={{ gap: '14px' }}>
-            <div className="mui-card" style={{ padding: '14px' }}>
-              <div style={{ fontSize: '12px', opacity: 0.7 }}>Notes & Docs</div>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#22d3ee' }}>
-                {s.notes_count} Notes • {s.documents_count} Docs
-              </div>
-            </div>
-            <div className="mui-card" style={{ padding: '14px' }}>
-              <div style={{ fontSize: '12px', opacity: 0.7 }}>Tasks & Meetings</div>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#34d399' }}>
-                {s.tasks_completed}/{s.tasks_total} Tasks • {s.meetings_count} Meetings
-              </div>
-            </div>
-            <div className="mui-card" style={{ padding: '14px' }}>
-              <div style={{ fontSize: '12px', opacity: 0.7 }}>Plan & AI Credits</div>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#a78bfa' }}>
-                {s.plan_id.toUpperCase()} ({s.ai_credits_used}/{s.ai_credits_limit})
-              </div>
-              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <select
-                  aria-label="Assign Plan"
-                  value={s.plan_id}
-                  onChange={async (e) => {
-                    const nextPlan = e.target.value as 'starter' | 'pro' | 'team' | 'enterprise';
-                    try {
-                      await assignSuperAdminUserPlan(adminEmail, p.id, nextPlan);
-                      showToast(`Plan updated to ${nextPlan.toUpperCase()} for ${p.email}`, 'success');
-                      const updated = await fetchSuperAdminUserDetails(adminEmail, p.id);
-                      setSelectedDetails(updated);
-                    } catch (err: any) {
-                      showToast(err.message || 'Failed to update plan', 'error');
-                    }
-                  }}
-                  style={{
-                    padding: '4px 8px',
-                    borderRadius: '6px',
-                    border: '1px solid var(--mui-border)',
-                    background: 'var(--mui-surface)',
-                    color: 'inherit',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                  }}
-                >
-                  <option value="starter">Starter</option>
-                  <option value="pro">Pro</option>
-                  <option value="team">Team</option>
-                  <option value="enterprise">Enterprise</option>
-                </select>
-                <span style={{ fontSize: '11px', opacity: 0.7 }}>Manual Override</span>
-              </div>
-            </div>
-          </div>
+          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' }, mb: 2.5 }}>
+            <StatCard index={2} icon="description" accent="cyan" label="Notes & documents" value={`${s.notes_count} · ${s.documents_count}`} hint={`${s.notes_count} notes, ${s.documents_count} docs`} />
+            <StatCard index={3} icon="task_alt" accent="green" label="Tasks & meetings" value={`${s.tasks_completed}/${s.tasks_total}`} hint={`tasks done, ${s.meetings_count} meetings`} />
+            <Card sx={{ p: 2.25, ...riseSx(4), gridColumn: { sm: '1 / -1', md: 'auto' } }}>
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>Plan & AI credits</Typography>
+              <Typography sx={{ fontSize: 22, fontWeight: 800, mb: 1.5 }}>
+                {s.plan_id.toUpperCase()} <Typography component="span" variant="body2" color="text.secondary">({s.ai_credits_used}/{s.ai_credits_limit})</Typography>
+              </Typography>
+              <TextField
+                select
+                size="small"
+                label="Change plan"
+                value={s.plan_id}
+                fullWidth
+                onChange={async (e) => {
+                  const nextPlan = e.target.value as 'starter' | 'pro' | 'team' | 'enterprise';
+                  try {
+                    await assignSuperAdminUserPlan(adminEmail, p.id, nextPlan);
+                    showToast(`Plan updated to ${nextPlan.toUpperCase()} for ${p.email}`, 'success');
+                    const updated = await fetchSuperAdminUserDetails(adminEmail, p.id);
+                    setSelectedDetails(updated);
+                  } catch (err: any) {
+                    showToast(err.message || 'Failed to update plan', 'error');
+                  }
+                }}
+              >
+                <MenuItem value="starter">Starter</MenuItem>
+                <MenuItem value="pro">Pro</MenuItem>
+                <MenuItem value="team">Team</MenuItem>
+                <MenuItem value="enterprise">Enterprise</MenuItem>
+              </TextField>
+            </Card>
+          </Box>
 
-          <div className="mui-grid-2" style={{ gap: '16px', alignItems: 'start' }}>
-            {/* Orgs & Recent Notes/Tasks */}
-            <div className="mui-card">
-              <h3 className="mui-card-title" style={{ marginBottom: '12px' }}>
-                <span className="material-symbols-rounded">corporate_fare</span>
-                <span>Organizations ({selectedDetails.memberships.length})</span>
-              </h3>
+          <Box sx={{ display: 'grid', gap: 2.5, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, alignItems: 'start' }}>
+            <SectionCard index={5} icon="corporate_fare" accent="indigo" title={`Organizations (${selectedDetails.memberships.length})`}>
               {selectedDetails.memberships.length === 0 ? (
-                <p style={{ fontSize: '13px', opacity: 0.7 }}>Personal workspace only.</p>
+                <Typography variant="body2" color="text.secondary">Personal workspace only.</Typography>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <Stack spacing={1}>
                   {selectedDetails.memberships.map((m) => (
-                    <div
+                    <Stack
                       key={m.org_id}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid var(--mui-border)',
-                      }}
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="center"
+                      spacing={1}
+                      sx={{ px: 1.75, py: 1.25, borderRadius: 3, border: 1, borderColor: 'divider' }}
                     >
-                      <span>{m.org_name}</span>
-                      <strong style={{ color: '#22d3ee', textTransform: 'uppercase', fontSize: '11.5px' }}>{m.role}</strong>
-                    </div>
+                      <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 0 }} noWrap>{m.org_name}</Typography>
+                      <Chip size="small" label={m.role} variant="outlined" color="secondary" />
+                    </Stack>
                   ))}
-                </div>
+                </Stack>
               )}
 
-              <h4 style={{ marginTop: '18px', marginBottom: '8px' }}>Recent Notes</h4>
+              <Typography variant="subtitle2" sx={{ mt: 2.5, mb: 1 }}>Recent notes</Typography>
               {selectedDetails.recent_notes.length === 0 ? (
-                <p style={{ fontSize: '12.5px', opacity: 0.65 }}>No notes yet.</p>
+                <Typography variant="body2" color="text.secondary">No notes yet.</Typography>
               ) : (
-                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px' }}>
+                <Stack spacing={0.75}>
                   {selectedDetails.recent_notes.map((n) => (
-                    <li key={n.id} style={{ marginBottom: '4px' }}>{n.title}</li>
+                    <Stack key={n.id} direction="row" spacing={1} alignItems="center">
+                      <Icon name="description" size={16} sx={{ color: 'text.secondary' }} />
+                      <Typography variant="body2" noWrap>{n.title}</Typography>
+                    </Stack>
                   ))}
-                </ul>
+                </Stack>
               )}
-            </div>
+            </SectionCard>
 
-            {/* Recent Audit Logs */}
-            <div className="mui-card">
-              <h3 className="mui-card-title" style={{ marginBottom: '12px' }}>
-                <span className="material-symbols-rounded">history</span>
-                <span>Recent Audit Activity</span>
-              </h3>
+            <SectionCard index={6} icon="history" accent="slate" title="Recent activity">
               {selectedDetails.recent_audit_logs.length === 0 ? (
-                <p style={{ fontSize: '13px', opacity: 0.7 }}>No recent audit events recorded.</p>
+                <Typography variant="body2" color="text.secondary">No recent activity.</Typography>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <Stack spacing={1}>
                   {selectedDetails.recent_audit_logs.map((a) => (
-                    <div
-                      key={a.id}
-                      style={{
-                        padding: '8px 10px',
-                        borderRadius: '8px',
-                        border: '1px solid var(--mui-border)',
-                        fontSize: '12.5px',
-                      }}
-                    >
-                      <div style={{ fontWeight: 600 }}>{a.action}</div>
-                      <div style={{ opacity: 0.7, fontSize: '11px' }}>
-                        {a.resource_type} • {a.created_at ? new Date(a.created_at).toLocaleString() : ''}
-                      </div>
-                    </div>
+                    <Box key={a.id} sx={{ px: 1.75, py: 1.25, borderRadius: 3, border: 1, borderColor: 'divider' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{a.action}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {a.resource_type} · {a.created_at ? new Date(a.created_at).toLocaleString() : ''}
+                      </Typography>
+                    </Box>
                   ))}
-                </div>
+                </Stack>
               )}
-            </div>
-          </div>
-        </div>
+            </SectionCard>
+          </Box>
+        </PageContainer>
       </div>
     );
   }
 
   return (
     <div id="view-superadmin" className="view-container active">
-      <div style={{ maxWidth: '1220px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
-        {/* Header Banner */}
-        <div
-          className="mui-card"
-          style={{
-            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(6, 182, 212, 0.12))',
-            borderColor: 'rgba(245, 158, 11, 0.35)',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span className="material-symbols-rounded" style={{ color: '#fbbf24' }}>admin_panel_settings</span>
-                <span>Super Admin Control Center</span>
-              </h2>
-              <p style={{ margin: '4px 0 0 0', fontSize: '13px', opacity: 0.8 }}>
-                Platform-wide user management, role governance, account status control &amp; detailed user profile inspection.
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className="mui-btn mui-btn-outlined mui-btn-sm"
-                onClick={loadAll}
-              >
-                <span className="material-symbols-rounded icon-sm">refresh</span>
-                <span>Refresh</span>
-              </button>
-              <button
-                type="button"
-                className="mui-btn mui-btn-primary mui-btn-sm"
+      <PageContainer>
+        <PageHeader
+          overline="Administration"
+          title="Super Admin"
+          description="Manage every user: roles, plans, account status and passwords."
+          actions={
+            <>
+              <Button variant="outlined" startIcon={<Icon name="refresh" />} onClick={loadAll}>
+                Refresh
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<Icon name={showCreateForm ? 'close' : 'person_add'} />}
                 onClick={() => setShowCreateForm((v) => !v)}
               >
-                <span className="material-symbols-rounded icon-sm">person_add</span>
-                <span>{showCreateForm ? 'Close Form' : 'Create User'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+                {showCreateForm ? 'Close form' : 'New user'}
+              </Button>
+            </>
+          }
+        />
 
         {/* Platform KPIs */}
         {overview && (
-          <div className="mui-grid-3" style={{ gap: '14px' }}>
-            <div className="mui-card" style={{ padding: '16px' }}>
-              <div style={{ fontSize: '12px', opacity: 0.7 }}>Platform Users</div>
-              <div style={{ fontSize: '26px', fontWeight: 800, color: '#22d3ee' }}>{overview.total_users}</div>
-              <div style={{ fontSize: '12px', opacity: 0.75 }}>
-                {overview.active_users} Active • {overview.suspended_users} Suspended • {overview.superadmin_count} SuperAdmin
-              </div>
-            </div>
-            <div className="mui-card" style={{ padding: '16px' }}>
-              <div style={{ fontSize: '12px', opacity: 0.7 }}>Workspaces &amp; Content</div>
-              <div style={{ fontSize: '26px', fontWeight: 800, color: '#34d399' }}>
-                {overview.total_orgs} Orgs
-              </div>
-              <div style={{ fontSize: '12px', opacity: 0.75 }}>
-                {overview.total_notes} Notes • {overview.total_tasks} Tasks • {overview.total_meetings} Meetings
-              </div>
-            </div>
-            <div className="mui-card" style={{ padding: '16px' }}>
-              <div style={{ fontSize: '12px', opacity: 0.7 }}>Knowledge &amp; AI Usage</div>
-              <div style={{ fontSize: '26px', fontWeight: 800, color: '#a78bfa' }}>
-                {overview.total_ai_credits} Credits
-              </div>
-              <div style={{ fontSize: '12px', opacity: 0.75 }}>
-                {overview.total_documents} Knowledge Docs indexed
-              </div>
-            </div>
-          </div>
+          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' }, mb: 2.5 }}>
+            <StatCard
+              index={1}
+              icon="group"
+              accent="cyan"
+              label="Users"
+              value={overview.total_users}
+              hint={`${overview.active_users} active · ${overview.suspended_users} suspended · ${overview.superadmin_count} super admin`}
+            />
+            <StatCard
+              index={2}
+              icon="corporate_fare"
+              accent="green"
+              label="Organizations"
+              value={overview.total_orgs}
+              hint={`${overview.total_notes} notes · ${overview.total_tasks} tasks · ${overview.total_meetings} meetings`}
+            />
+            <StatCard
+              index={3}
+              icon="auto_awesome"
+              accent="violet"
+              label="AI credits used"
+              value={overview.total_ai_credits}
+              hint={`${overview.total_documents} documents in knowledge base`}
+            />
+          </Box>
         )}
 
         {/* Create New User Form */}
         {showCreateForm && (
-          <form className="mui-card" onSubmit={handleCreateUser}>
-            <h3 className="mui-card-title" style={{ marginBottom: '12px' }}>
-              <span className="material-symbols-rounded">person_add</span>
-              <span>Create New Platform User</span>
-            </h3>
-            <div className="mui-grid-3" style={{ gap: '12px' }}>
-              <div className="mui-input-group">
-                <label>Email Address *</label>
-                <input
-                  type="email"
-                  className="mui-input"
-                  required
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="user@company.com"
-                />
-              </div>
-              <div className="mui-input-group">
-                <label>Full Name</label>
-                <input
-                  type="text"
-                  className="mui-input"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Full Name"
-                />
-              </div>
-              <div className="mui-input-group">
-                <label>Initial Password *</label>
-                <input
-                  type="password"
-                  className="mui-input"
-                  required
-                  minLength={6}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Min 6 characters"
-                />
-              </div>
-              <div className="mui-input-group">
-                <label>System Role</label>
-                <select
-                  className="mui-input"
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value as any)}
-                >
-                  <option value="user">Standard User</option>
-                  <option value="admin">Admin</option>
-                  <option value="superadmin">Super Admin</option>
-                </select>
-              </div>
-              <div className="mui-input-group">
-                <label>Job Title</label>
-                <input
-                  type="text"
-                  className="mui-input"
-                  value={newJobTitle}
-                  onChange={(e) => setNewJobTitle(e.target.value)}
-                  placeholder="e.g. Engineer"
-                />
-              </div>
-              <div className="mui-input-group">
-                <label>Department</label>
-                <input
-                  type="text"
-                  className="mui-input"
-                  value={newDepartment}
-                  onChange={(e) => setNewDepartment(e.target.value)}
-                  placeholder="e.g. Product"
-                />
-              </div>
-            </div>
-            <button type="submit" className="mui-btn mui-btn-primary" disabled={creating}>
-              {creating ? 'Creating...' : 'Create User Account'}
-            </button>
-          </form>
+          <Card component="form" onSubmit={handleCreateUser} sx={{ p: { xs: 2.25, sm: 3 }, mb: 2.5, ...riseSx(1) }}>
+            <Typography variant="h6" component="h2" sx={{ mb: 2 }}>New user</Typography>
+            <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' }, mb: 2.5 }}>
+              <TextField type="email" label="Email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="user@company.com" fullWidth />
+              <TextField label="Full name" value={newName} onChange={(e) => setNewName(e.target.value)} fullWidth />
+              <TextField
+                type="password"
+                label="Password"
+                required
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                helperText="At least 6 characters"
+                slotProps={{ htmlInput: { minLength: 6 } }}
+                fullWidth
+              />
+              <TextField select label="Role" value={newRole} onChange={(e) => setNewRole(e.target.value as any)} fullWidth>
+                <MenuItem value="user">User</MenuItem>
+                <MenuItem value="admin">Admin</MenuItem>
+                <MenuItem value="superadmin">Super Admin</MenuItem>
+              </TextField>
+              <TextField label="Job title" value={newJobTitle} onChange={(e) => setNewJobTitle(e.target.value)} placeholder="e.g. Manager" fullWidth />
+              <TextField label="Department" value={newDepartment} onChange={(e) => setNewDepartment(e.target.value)} placeholder="e.g. Operations" fullWidth />
+            </Box>
+            <Button type="submit" variant="contained" color="primary" disabled={creating} startIcon={creating ? <CircularProgress size={16} color="inherit" /> : <Icon name="person_add" />}>
+              {creating ? 'Creating...' : 'Create user'}
+            </Button>
+          </Card>
         )}
 
         {/* Password Reset Inline Card */}
         {resetTarget && (
-          <form className="mui-card" onSubmit={handleResetPasswordSubmit} style={{ borderColor: '#f59e0b' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <strong>Reset Password for {resetTarget.email}</strong>
-              <button type="button" className="mui-btn-icon" onClick={() => setResetTarget(null)}>
-                <span className="material-symbols-rounded icon-sm">close</span>
-              </button>
-            </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <input
+          <Card component="form" onSubmit={handleResetPasswordSubmit} sx={{ p: { xs: 2.25, sm: 3 }, mb: 2.5, borderColor: 'warning.main', ...riseSx(1) }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>
+                Reset password for {resetTarget.email}
+              </Typography>
+              <IconButton aria-label="Close password reset" onClick={() => setResetTarget(null)} sx={{ width: 44, height: 44 }}>
+                <Icon name="close" />
+              </IconButton>
+            </Stack>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              <TextField
                 type="password"
-                className="mui-input"
+                label="New password"
                 required
-                minLength={6}
-                placeholder="Enter new password (min 6 chars)"
+                placeholder="At least 6 characters"
                 value={resetPassValue}
                 onChange={(e) => setResetPassValue(e.target.value)}
-                style={{ flex: 1, minWidth: '200px' }}
+                slotProps={{ htmlInput: { minLength: 6 } }}
+                fullWidth
               />
-              <button type="submit" className="mui-btn mui-btn-primary mui-btn-sm">
-                Update Password
-              </button>
-            </div>
-          </form>
+              <Button type="submit" variant="contained" color="primary" sx={{ minHeight: 56, flex: 'none' }}>
+                Update password
+              </Button>
+            </Stack>
+          </Card>
         )}
 
         {/* User Management Directory */}
-        <div className="mui-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
-            <h3 className="mui-card-title" style={{ margin: 0 }}>
-              <span className="material-symbols-rounded">group</span>
-              <span>All Platform Users ({users.length})</span>
-            </h3>
-            <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <input
-                type="text"
-                className="mui-input"
-                placeholder="Search name, email, dept..."
-                value={searchQ}
-                onChange={(e) => setSearchQ(e.target.value)}
-                style={{ width: '210px', height: '34px', padding: '0 10px' }}
-              />
-              <select
-                className="mui-input"
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value)}
-                style={{ width: '130px', height: '34px', padding: '0 8px' }}
-              >
-                <option value="all">All Roles</option>
-                <option value="superadmin">Super Admin</option>
-                <option value="admin">Admin</option>
-                <option value="user">User</option>
-              </select>
-              <select
-                className="mui-input"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                style={{ width: '130px', height: '34px', padding: '0 8px' }}
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active</option>
-                <option value="suspended">Suspended</option>
-              </select>
-              <button type="submit" className="mui-btn mui-btn-outlined mui-btn-sm">
-                Search
-              </button>
-            </form>
-          </div>
+        <SectionCard index={4} icon="group" accent="cyan" title={`All users (${users.length})`} sx={{ overflow: 'hidden' }}>
+          <Box
+            component="form"
+            onSubmit={handleSearchSubmit}
+            sx={{
+              pb: 2,
+              display: 'grid',
+              gap: 1.5,
+              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '2fr 1fr 1fr auto' },
+            }}
+          >
+            <TextField
+              size="small"
+              label="Search"
+              placeholder="Name, email or department"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              sx={{ gridColumn: { sm: '1 / -1', md: 'auto' } }}
+              fullWidth
+            />
+            <TextField select size="small" label="Role" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} fullWidth>
+              <MenuItem value="all">All roles</MenuItem>
+              <MenuItem value="superadmin">Super Admin</MenuItem>
+              <MenuItem value="admin">Admin</MenuItem>
+              <MenuItem value="user">User</MenuItem>
+            </TextField>
+            <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} fullWidth>
+              <MenuItem value="all">All statuses</MenuItem>
+              <MenuItem value="active">Active</MenuItem>
+              <MenuItem value="suspended">Suspended</MenuItem>
+            </TextField>
+            <Button type="submit" variant="outlined" startIcon={<Icon name="search" />} sx={{ minHeight: 44, gridColumn: { sm: '1 / -1', md: 'auto' } }}>
+              Search
+            </Button>
+          </Box>
 
           {loading || loadingDetails ? (
-            <p style={{ opacity: 0.7 }}>Loading users...</p>
+            <Stack alignItems="center" spacing={1.5} sx={{ py: 6, mx: -2.5, borderTop: 1, borderColor: 'divider' }}>
+              <CircularProgress size={28} color="secondary" />
+              <Typography variant="body2" color="text.secondary">Loading users...</Typography>
+            </Stack>
           ) : users.length === 0 ? (
-            <p style={{ opacity: 0.7 }}>No users matched your filter.</p>
+            <Box sx={{ mx: -2.5, mb: -2.5, borderTop: 1, borderColor: 'divider' }}>
+              <EmptyState icon="person_search" title="No users found" description="Try a different search or filter." />
+            </Box>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {users.map((u) => {
-                const isImg = u.avatar_url.startsWith('http') || u.avatar_url.startsWith('data:image');
-                return (
-                  <div
-                    key={u.id}
-                    style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '12px',
-                      padding: '12px 14px',
-                      borderRadius: '12px',
-                      border: '1px solid var(--mui-border)',
-                      background: 'var(--mui-bg-paper)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '220px', flex: 1 }}>
-                      <div
-                        style={{
-                          width: '42px',
-                          height: '42px',
-                          borderRadius: '50%',
-                          background: 'linear-gradient(135deg, #06b6d4, #6366f1)',
-                          color: '#fff',
-                          fontWeight: 700,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          overflow: 'hidden',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {isImg ? (
-                          <img src={u.avatar_url} alt={u.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                          u.avatar_url || u.full_name.charAt(0).toUpperCase()
-                        )}
-                      </div>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <strong style={{ fontSize: '14.5px' }}>{u.full_name}</strong>
-                          <span
-                            style={{
-                              fontSize: '10.5px',
-                              fontWeight: 700,
-                              padding: '2px 8px',
-                              borderRadius: '999px',
-                              background: u.is_active ? 'rgba(16,185,129,0.16)' : 'rgba(239,68,68,0.16)',
-                              color: u.is_active ? '#34d399' : '#f87171',
-                            }}
-                          >
-                            {u.is_active ? 'ACTIVE' : 'SUSPENDED'}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '12.5px', opacity: 0.78 }}>{u.email}</div>
-                        <div style={{ fontSize: '11.5px', opacity: 0.65 }}>
-                          {u.stats.notes_count} Notes • {u.stats.tasks_count} Tasks • {u.stats.meetings_count} Meetings • {u.stats.orgs_count} Orgs
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <select
-                        className="mui-input"
-                        value={u.role}
-                        disabled={u.email === adminEmail}
-                        onChange={(e) => handleChangeRole(u, e.target.value)}
-                        style={{ height: '32px', padding: '0 8px', fontSize: '12px', width: '125px' }}
-                      >
-                        <option value="user">User</option>
-                        <option value="admin">Admin</option>
-                        <option value="superadmin">Super Admin</option>
-                      </select>
-
-                      <button
-                        type="button"
-                        className="mui-btn mui-btn-primary mui-btn-sm"
-                        onClick={() => handleOpenDetails(u.id)}
-                      >
-                        <span className="material-symbols-rounded icon-sm">visibility</span>
-                        <span>View Profile</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        className="mui-btn mui-btn-outlined mui-btn-sm"
-                        onClick={() => setResetTarget({ id: u.id, email: u.email })}
-                        title="Reset Password"
-                      >
-                        <span className="material-symbols-rounded icon-sm">key</span>
-                      </button>
-
-                      {u.email !== adminEmail && (
-                        <>
-                          <button
-                            type="button"
-                            className="mui-btn mui-btn-outlined mui-btn-sm"
-                            onClick={() => handleToggleStatus(u)}
-                            title={u.is_active ? 'Suspend User' : 'Activate User'}
-                          >
-                            <span className="material-symbols-rounded icon-sm">
-                              {u.is_active ? 'block' : 'check_circle'}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="mui-btn mui-btn-outlined mui-btn-sm"
-                            style={{ color: '#f87171', borderColor: 'rgba(239,68,68,0.4)' }}
-                            onClick={() => handleDeleteUser(u)}
-                            title="Delete User"
-                          >
-                            <span className="material-symbols-rounded icon-sm">delete</span>
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <Box sx={{ overflowX: 'auto', mx: -2.5, mb: -2.5, borderTop: 1, borderColor: 'divider' }}>
+              <Table sx={{ minWidth: 820 }} aria-label="Users">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>User</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Activity</TableCell>
+                    <TableCell>Role</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {users.map((u, i) => (
+                    <TableRow key={u.id} hover sx={{ ...riseSx(Math.min(i, 8) + 5), '&:last-child td': { borderBottom: 0 } }}>
+                      <TableCell>
+                        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
+                          <UserAvatar url={u.avatar_url} name={u.full_name} size={40} />
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>{u.full_name}</Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap component="div">{u.email}</Typography>
+                          </Box>
+                        </Stack>
+                      </TableCell>
+                      <TableCell><StatusChip active={u.is_active} /></TableCell>
+                      <TableCell>
+                        <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                          {u.stats.notes_count} notes · {u.stats.tasks_count} tasks · {u.stats.meetings_count} meetings · {u.stats.orgs_count} orgs
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          select
+                          size="small"
+                          value={u.role}
+                          disabled={u.email === adminEmail}
+                          onChange={(e) => handleChangeRole(u, e.target.value)}
+                          slotProps={{ htmlInput: { 'aria-label': `Role for ${u.email}` } }}
+                          sx={{ minWidth: 140 }}
+                        >
+                          <MenuItem value="user">User</MenuItem>
+                          <MenuItem value="admin">Admin</MenuItem>
+                          <MenuItem value="superadmin">Super Admin</MenuItem>
+                        </TextField>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
+                          <Button size="small" variant="contained" color="primary" startIcon={<Icon name="visibility" size={18} />} onClick={() => handleOpenDetails(u.id)} sx={{ minHeight: 40, whiteSpace: 'nowrap' }}>
+                            View
+                          </Button>
+                          <Tooltip title="Reset password">
+                            <IconButton aria-label={`Reset password for ${u.email}`} onClick={() => setResetTarget({ id: u.id, email: u.email })} sx={{ width: 44, height: 44 }}>
+                              <Icon name="key" />
+                            </IconButton>
+                          </Tooltip>
+                          {u.email !== adminEmail && (
+                            <>
+                              <Tooltip title={u.is_active ? 'Suspend user' : 'Activate user'}>
+                                <IconButton
+                                  aria-label={`${u.is_active ? 'Suspend' : 'Activate'} ${u.email}`}
+                                  onClick={() => handleToggleStatus(u)}
+                                  sx={{ width: 44, height: 44 }}
+                                >
+                                  <Icon name={u.is_active ? 'block' : 'check_circle'} />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete user">
+                                <IconButton
+                                  aria-label={`Delete ${u.email}`}
+                                  color="error"
+                                  onClick={() => handleDeleteUser(u)}
+                                  sx={{ width: 44, height: 44, border: 1, borderColor: 'error.main' }}
+                                >
+                                  <Icon name="delete" />
+                                </IconButton>
+                              </Tooltip>
+                            </>
+                          )}
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
           )}
-        </div>
-      </div>
+        </SectionCard>
+      </PageContainer>
     </div>
   );
 };

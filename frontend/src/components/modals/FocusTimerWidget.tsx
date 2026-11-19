@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Box, Button, Grow, IconButton, InputBase, Paper, Stack, ToggleButton, ToggleButtonGroup, Typography, useMediaQuery } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
+import { Icon, IconTile } from '../ui';
 
 interface FocusTimerWidgetProps {
   isOpen: boolean;
@@ -17,7 +20,7 @@ export const FocusTimerWidget: React.FC<FocusTimerWidgetProps> = ({
   const [secondsLeft, setSecondsLeft] = useState(25 * 60);
   const [running, setRunning] = useState(false);
   const [soundMode, setSoundMode] = useState<SoundMode>('none');
-  const [focusLabel, setFocusLabel] = useState('Deep Work Sprint');
+  const [focusLabel, setFocusLabel] = useState('Deep work');
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const soundNodeRef = useRef<AudioNode | null>(null);
@@ -101,7 +104,8 @@ export const FocusTimerWidget: React.FC<FocusTimerWidgetProps> = ({
     return stopAudio;
   }, [soundMode]);
 
-  if (!isOpen) return null;
+  const theme = useTheme();
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
   const mins = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
   const secs = String(secondsLeft % 60).padStart(2, '0');
@@ -112,112 +116,107 @@ export const FocusTimerWidget: React.FC<FocusTimerWidgetProps> = ({
     setSecondsLeft(m * 60);
   };
 
+  const toggleSx = { textTransform: 'none', fontWeight: 600, fontSize: 12, py: 0.5 } as const;
+
   return (
-    <div
-      style={{
-        position: 'fixed',
-        bottom: '22px',
-        left: '260px',
-        zIndex: 8500,
-        width: '320px',
-        background: 'var(--mui-surface)',
-        border: '1px solid var(--mui-border)',
-        borderRadius: '14px',
-        boxShadow: '0 20px 50px rgba(0,0,0,0.4)',
-        padding: '16px',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '13.5px' }}>
-          <span className="material-symbols-rounded" style={{ color: '#06b6d4' }}>timer</span>
-          <span>Focus Studio & Ambient</span>
-        </div>
-        <button className="mui-btn-icon" onClick={onClose} title="Close">
-          <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>close</span>
-        </button>
-      </div>
+    <Grow in={isOpen} unmountOnExit timeout={reduceMotion ? 0 : 220} style={{ transformOrigin: 'bottom left' }}>
+      <Paper
+        elevation={8}
+        role="dialog"
+        aria-labelledby="focus-timer-title"
+        sx={{
+          position: 'fixed',
+          zIndex: 8500,
+          bottom: { xs: 'calc(84px + env(safe-area-inset-bottom, 0px))', md: 22 },
+          left: { xs: 12, md: 260 },
+          right: { xs: 12, sm: 'auto' },
+          width: { sm: 340 },
+          p: 2,
+          borderRadius: '18px',
+          border: 1,
+          borderColor: 'divider',
+          boxShadow: theme.palette.mode === 'dark' ? '0 20px 50px rgba(0,0,0,.55)' : '0 20px 50px rgba(15,23,42,.14)',
+        }}
+      >
+        <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 1.5 }}>
+          <IconTile icon="timer" size={32} />
+          <Typography id="focus-timer-title" variant="subtitle2" sx={{ flex: 1, fontWeight: 700 }}>Focus timer</Typography>
+          <IconButton size="small" aria-label="Close" onClick={onClose}>
+            <Icon name="close" size={18} />
+          </IconButton>
+        </Stack>
 
-      <input
-        className="mui-input"
-        value={focusLabel}
-        onChange={(e) => setFocusLabel(e.target.value)}
-        placeholder="What are you focusing on?"
-        style={{ marginBottom: '12px', fontSize: '12.5px', padding: '7px 10px' }}
-      />
+        <InputBase
+          fullWidth
+          value={focusLabel}
+          onChange={(e) => setFocusLabel(e.target.value)}
+          placeholder="What are you focusing on?"
+          inputProps={{ 'aria-label': 'Focus label' }}
+          sx={{ mb: 1.5, px: 1.5, py: 0.5, fontSize: 13.5, borderRadius: '10px', border: 1, borderColor: 'divider', bgcolor: 'background.default' }}
+        />
 
-      <div style={{ textAlign: 'center', padding: '12px 0', background: 'var(--mui-paper)', borderRadius: '10px', border: '1px solid var(--mui-border)', marginBottom: '12px' }}>
-        <div style={{ fontSize: '38px', fontWeight: 800, letterSpacing: '0.04em', fontVariantNumeric: 'tabular-nums', color: running ? '#06b6d4' : 'var(--mui-text-primary)' }}>
-          {mins}:{secs}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginTop: '8px' }}>
-          {[15, 25, 45, 5].map((m) => (
-            <button
-              key={m}
-              onClick={() => selectPreset(m)}
-              style={{
-                padding: '3px 8px',
-                borderRadius: '6px',
-                fontSize: '11px',
-                cursor: 'pointer',
-                border: '1px solid var(--mui-border)',
-                background: presetMinutes === m ? 'var(--mui-primary-subtle)' : 'transparent',
-                color: 'var(--mui-text-primary)',
-              }}
-            >
-              {m === 5 ? '5m Break' : `${m}m`}
-            </button>
-          ))}
-        </div>
-      </div>
+        <Box sx={{ textAlign: 'center', py: 2, mb: 1.5, borderRadius: '14px', border: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
+          <Typography
+            component="div"
+            aria-live="off"
+            sx={{ fontSize: 44, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.01em', fontVariantNumeric: 'tabular-nums', color: running ? 'primary.main' : 'text.primary', transition: 'color .2s ease' }}
+          >
+            {mins}:{secs}
+          </Typography>
+          <Stack direction="row" spacing={0.75} justifyContent="center" sx={{ mt: 1.25 }}>
+            {[15, 25, 45, 5].map((m) => (
+              <Button
+                key={m}
+                size="small"
+                variant={presetMinutes === m ? 'contained' : 'outlined'}
+                disableElevation
+                onClick={() => selectPreset(m)}
+                sx={{ minWidth: 0, px: 1.25, py: 0.25, fontSize: 12 }}
+              >
+                {m === 5 ? '5m break' : `${m}m`}
+              </Button>
+            ))}
+          </Stack>
+        </Box>
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-        <button
-          className="mui-btn mui-btn-primary"
-          style={{ flex: 1, justifyContent: 'center' }}
-          onClick={() => setRunning((r) => !r)}
-        >
-          <span className="material-symbols-rounded">{running ? 'pause' : 'play_arrow'}</span>
-          {running ? 'Pause' : 'Start Focus'}
-        </button>
-        <button
-          className="mui-btn mui-btn-outlined"
-          onClick={() => {
-            setRunning(false);
-            setSecondsLeft(presetMinutes * 60);
-          }}
-        >
-          Reset
-        </button>
-      </div>
-
-      <div style={{ fontSize: '11.5px', color: 'var(--mui-text-muted)', marginBottom: '6px' }}>Ambient Soundscape</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
-        {(
-          [
-            { id: 'none', label: 'Mute' },
-            { id: 'rain', label: 'Rain' },
-            { id: 'brown', label: 'Deep' },
-            { id: 'drone', label: 'Zen' },
-          ] as Array<{ id: SoundMode; label: string }>
-        ).map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setSoundMode(s.id)}
-            style={{
-              padding: '6px 4px',
-              borderRadius: '7px',
-              fontSize: '11px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              border: '1px solid var(--mui-border)',
-              background: soundMode === s.id ? 'var(--mui-primary-subtle)' : 'var(--mui-paper)',
-              color: soundMode === s.id ? '#22d3ee' : 'var(--mui-text-secondary)',
+        <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+          <Button
+            fullWidth
+            variant="contained"
+            onClick={() => setRunning((r) => !r)}
+            startIcon={<Icon name={running ? 'pause' : 'play_arrow'} size={20} fill />}
+          >
+            {running ? 'Pause' : 'Start'}
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setRunning(false);
+              setSecondsLeft(presetMinutes * 60);
             }}
           >
-            {s.label}
-          </button>
-        ))}
-      </div>
-    </div>
+            Reset
+          </Button>
+        </Stack>
+
+        <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 0.75, fontWeight: 600 }}>
+          Background sound
+        </Typography>
+        <ToggleButtonGroup exclusive fullWidth size="small" value={soundMode} aria-label="Background sound">
+          {(
+            [
+              { id: 'none', label: 'Off' },
+              { id: 'rain', label: 'Rain' },
+              { id: 'brown', label: 'Deep' },
+              { id: 'drone', label: 'Hum' },
+            ] as Array<{ id: SoundMode; label: string }>
+          ).map((s) => (
+            <ToggleButton key={s.id} value={s.id} onClick={() => setSoundMode(s.id)} sx={toggleSx}>
+              {s.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Paper>
+    </Grow>
   );
 };

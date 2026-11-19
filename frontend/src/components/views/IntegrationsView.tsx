@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Alert, Box, Button, Card, Chip, FormControlLabel, IconButton, Stack, Switch, TextField, Tooltip, Typography
+} from '@mui/material';
+import {
   fetchIntegrations,
   saveIntegrationConfig,
   testIntegrationWebhook,
@@ -9,6 +12,8 @@ import {
   type IntegrationConfig,
   type ApiKeyItem
 } from '../../services/enterprise';
+import { Icon, IconTile, PageContainer, PageHeader, SectionCard, EmptyState, riseSx } from '../ui';
+import type { Accent } from '../../theme/renimTheme';
 
 interface IntegrationsViewProps {
   userEmail: string;
@@ -16,12 +21,16 @@ interface IntegrationsViewProps {
 }
 
 const PROVIDERS = [
-  { id: 'slack', name: 'Slack Workspace', icon: 'tag', desc: 'Auto-post Meeting Summaries & Action Items to Slack channels.' },
-  { id: 'teams', name: 'Microsoft Teams', icon: 'groups', desc: 'Push daily AI briefings and urgent alerts to MS Teams.' },
-  { id: 'jira', name: 'Jira / Linear Sync', icon: 'view_kanban', desc: 'Sync Kanban tasks & meeting action items to engineering boards.' },
-  { id: 'github', name: 'GitHub Issues', icon: 'code', desc: 'Convert bug notes and meeting tasks into GitHub Issues.' },
-  { id: 'webhook', name: 'Custom Webhook', icon: 'webhook', desc: 'Send real-time JSON payloads on workspace events.' }
+  { id: 'slack', name: 'Slack', icon: 'tag', desc: 'Post meeting summaries and action items to a Slack channel.' },
+  { id: 'teams', name: 'Microsoft Teams', icon: 'groups', desc: 'Send daily briefings and urgent alerts to Teams.' },
+  { id: 'jira', name: 'Jira / Linear', icon: 'view_kanban', desc: 'Keep tasks and action items in sync with your project boards.' },
+  { id: 'github', name: 'GitHub Issues', icon: 'code', desc: 'Turn notes and meeting tasks into GitHub issues.' },
+  { id: 'webhook', name: 'Custom webhook', icon: 'webhook', desc: 'A webhook is a web address we notify whenever something happens in your workspace.' }
 ];
+
+const PROVIDER_ACCENT: Record<string, Accent> = {
+  slack: 'violet', teams: 'indigo', jira: 'cyan', github: 'slate', webhook: 'amber'
+};
 
 export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ userEmail, showToast }) => {
   const [configs, setConfigs] = useState<Record<string, IntegrationConfig>>({});
@@ -69,7 +78,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ userEmail, s
   const handleSave = async (provider: string) => {
     try {
       await saveIntegrationConfig({ ...configs[provider], user_email: userEmail });
-      showToast(`${provider.toUpperCase()} connector saved!`);
+      showToast(`${provider.toUpperCase()} connection saved!`);
     } catch (e: any) {
       showToast(e.message);
     }
@@ -77,10 +86,10 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ userEmail, s
 
   const handleTest = async (provider: string) => {
     const url = configs[provider]?.webhook_url;
-    if (!url) return showToast('Enter a Webhook URL first');
+    if (!url) return showToast('Enter a webhook URL first');
     try {
       const res = await testIntegrationWebhook(provider, url, userEmail);
-      showToast(res.delivered ? `Webhook delivered (HTTP ${res.status_code})` : `Failed (HTTP ${res.status_code})`);
+      showToast(res.delivered ? `Test message delivered (HTTP ${res.status_code})` : `Failed (HTTP ${res.status_code})`);
     } catch (e: any) {
       showToast(e.message);
     }
@@ -88,10 +97,10 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ userEmail, s
 
   const handleCreateKey = async () => {
     try {
-      const res = await createApiKey(newKeyName.trim() || 'Enterprise API Key', userEmail);
+      const res = await createApiKey(newKeyName.trim() || 'API Key', userEmail);
       setNewKeyName('');
       setNewlyCreatedSecret(res.api_key.secret_key || null);
-      showToast('API Key generated! Copy it now — it will not be shown again.');
+      showToast('API key created. Copy it now — it will not be shown again.');
       await loadAll();
     } catch (e: any) {
       showToast(e.message);
@@ -101,7 +110,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ userEmail, s
   const handleRevokeKey = async (id: string) => {
     try {
       await revokeApiKey(id, userEmail);
-      showToast('API Key revoked');
+      showToast('API key revoked');
       await loadAll();
     } catch (e: any) {
       showToast(e.message);
@@ -109,15 +118,16 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ userEmail, s
   };
 
   return (
-    <section className="workspace-view active" id="view-integrations">
-      <div className="mui-card" style={{ marginBottom: '20px' }}>
-        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Workflow Connectors & Webhooks</h2>
-        <p className="muted-sm" style={{ marginTop: '4px', marginBottom: '16px' }}>
-          Connect Renim AI with Slack, Microsoft Teams, Jira, GitHub, or custom automation webhooks.
-        </p>
+    <Box component="section" className="workspace-view active" id="view-integrations">
+      <PageContainer>
+        <PageHeader
+          overline="Integrations"
+          title="Integrations"
+          description="Connect the tools your team already uses so updates reach them automatically."
+        />
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))', gap: '14px' }}>
-          {PROVIDERS.map((p) => {
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)', xl: 'repeat(3, 1fr)' }, gap: 2, mb: 3 }}>
+          {PROVIDERS.map((p, i) => {
             const cfg = configs[p.id] || {
               provider: p.id,
               webhook_url: '',
@@ -126,140 +136,145 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ userEmail, s
               events: []
             };
             return (
-              <div
+              <Card
                 key={p.id}
-                style={{
-                  padding: '14px',
-                  borderRadius: '12px',
-                  border: '1px solid var(--mui-border)',
-                  background: 'var(--mui-bg-paper)'
+                sx={{
+                  p: 2.5, display: 'flex', flexDirection: 'column', gap: 2,
+                  ...(riseSx(i + 1) as object),
+                  transition: 'transform .2s ease, box-shadow .2s ease, border-color .2s ease',
+                  borderColor: cfg.is_enabled ? 'secondary.main' : 'divider',
+                  '&:hover': { transform: 'translateY(-3px)', boxShadow: 4 },
+                  '@media (prefers-reduced-motion: reduce)': { animation: 'none', transition: 'none', '&:hover': { transform: 'none' } },
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700 }}>
-                    <span className="material-symbols-rounded icon-sm" style={{ color: '#06b6d4' }}>{p.icon}</span>
-                    <span>{p.name}</span>
-                  </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={cfg.is_enabled}
-                      onChange={(e) => updateField(p.id, { is_enabled: e.target.checked })}
-                    />
-                    <span>{cfg.is_enabled ? 'Active' : 'Off'}</span>
-                  </label>
-                </div>
-                <p className="muted-sm" style={{ marginBottom: '10px' }}>{p.desc}</p>
-                <input
-                  type="text"
-                  className="mui-input"
-                  placeholder="Webhook URL (https://hooks.slack.com/...)"
-                  value={cfg.webhook_url}
-                  onChange={(e) => updateField(p.id, { webhook_url: e.target.value })}
-                  style={{ width: '100%', marginBottom: '8px' }}
-                />
-                <input
-                  type="text"
-                  className="mui-input"
-                  placeholder="Channel / Project Key (e.g. #general or ENG)"
-                  value={cfg.channel_or_project}
-                  onChange={(e) => updateField(p.id, { channel_or_project: e.target.value })}
-                  style={{ width: '100%', marginBottom: '10px' }}
-                />
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="mui-btn mui-btn-primary mui-btn-sm" onClick={() => handleSave(p.id)}>
-                    Save
-                  </button>
-                  <button className="mui-btn mui-btn-outlined mui-btn-sm" onClick={() => handleTest(p.id)}>
-                    Test Webhook
-                  </button>
-                </div>
-              </div>
+                <Stack direction="row" alignItems="flex-start" spacing={1.5}>
+                  <IconTile icon={p.icon} accent={PROVIDER_ACCENT[p.id] || 'cyan'} size={44} />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 700 }}>{p.name}</Typography>
+                    <Typography variant="body2" color="text.secondary">{p.desc}</Typography>
+                  </Box>
+                  <FormControlLabel
+                    sx={{ m: 0, flex: 'none' }}
+                    labelPlacement="start"
+                    control={
+                      <Switch
+                        color="secondary"
+                        checked={cfg.is_enabled}
+                        onChange={(e) => updateField(p.id, { is_enabled: e.target.checked })}
+                        inputProps={{ 'aria-label': `Turn ${p.name} on or off` }}
+                      />
+                    }
+                    label={<Typography variant="caption" sx={{ fontWeight: 700 }}>{cfg.is_enabled ? 'On' : 'Off'}</Typography>}
+                  />
+                </Stack>
+                <Stack spacing={1.5} sx={{ mt: 'auto' }}>
+                  <TextField
+                    size="small"
+                    label="Webhook URL"
+                    placeholder="https://hooks.example.com/..."
+                    value={cfg.webhook_url}
+                    onChange={(e) => updateField(p.id, { webhook_url: e.target.value })}
+                    fullWidth
+                  />
+                  <TextField
+                    size="small"
+                    label="Channel or project"
+                    placeholder="e.g. #general or OPS"
+                    value={cfg.channel_or_project}
+                    onChange={(e) => updateField(p.id, { channel_or_project: e.target.value })}
+                    fullWidth
+                  />
+                  <Stack direction="row" spacing={1}>
+                    <Button variant="contained" color="primary" onClick={() => handleSave(p.id)} sx={{ minHeight: 44, flex: 1 }}>
+                      Save
+                    </Button>
+                    <Button variant="outlined" color="inherit" onClick={() => handleTest(p.id)} startIcon={<Icon name="send" size={18} />} sx={{ minHeight: 44, flex: 1 }}>
+                      Send test
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Card>
             );
           })}
-        </div>
-      </div>
+        </Box>
 
-      <div className="mui-card">
-        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Developer API Keys (REST & Automation)</h3>
-        <p className="muted-sm" style={{ marginTop: '4px', marginBottom: '14px' }}>
-          Generate scoped secret keys (`sk_renim_...`) to authenticate external scripts and CI/CD pipelines.
-        </p>
-
-        {newlyCreatedSecret && (
-          <div
-            style={{
-              padding: '12px 14px',
-              borderRadius: '10px',
-              background: 'rgba(16, 185, 129, 0.12)',
-              border: '1px solid #10b981',
-              marginBottom: '14px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: '10px'
-            }}
-          >
-            <code style={{ fontSize: '13px', wordBreak: 'break-all' }}>{newlyCreatedSecret}</code>
-            <button
-              className="mui-btn mui-btn-outlined mui-btn-sm"
-              onClick={() => {
-                navigator.clipboard.writeText(newlyCreatedSecret);
-                showToast('Copied secret API key!');
-              }}
-            >
-              Copy
-            </button>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
-          <input
-            type="text"
-            className="mui-input"
-            placeholder="Key label (e.g. Zapier Production)"
-            value={newKeyName}
-            onChange={(e) => setNewKeyName(e.target.value)}
-            style={{ flex: 1 }}
-          />
-          <button className="mui-btn mui-btn-primary" onClick={handleCreateKey}>
-            <span className="material-symbols-rounded icon-sm">vpn_key</span>
-            <span>Generate Key</span>
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {apiKeys.length === 0 ? (
-            <p className="muted-sm">No API keys created yet.</p>
-          ) : (
-            apiKeys.map((k) => (
-              <div
-                key={k.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '10px 14px',
-                  borderRadius: '10px',
-                  border: '1px solid var(--mui-border)'
-                }}
-              >
-                <div>
-                  <strong>{k.name}</strong>
-                  <div className="muted-sm">{k.key_prefix} • Created {new Date(k.created_at).toLocaleDateString()}</div>
-                </div>
-                <button
-                  className="mui-btn mui-btn-outlined mui-btn-sm"
-                  style={{ color: '#ef4444', borderColor: '#ef4444' }}
-                  onClick={() => handleRevokeKey(k.id)}
+        <SectionCard
+          index={7}
+          icon="vpn_key"
+          accent="indigo"
+          title="API keys"
+          subtitle="Private keys (sk_renim_...) that let your own apps and automations connect to this workspace."
+        >
+          {newlyCreatedSecret && (
+            <Alert
+              severity="success"
+              icon={<Icon name="key" size={20} />}
+              sx={{ mb: 2, borderRadius: 3, alignItems: 'center', '& .MuiAlert-message': { minWidth: 0, flex: 1 } }}
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  startIcon={<Icon name="content_copy" size={16} />}
+                  sx={{ minHeight: 40 }}
+                  onClick={() => {
+                    navigator.clipboard.writeText(newlyCreatedSecret);
+                    showToast('API key copied!');
+                  }}
                 >
-                  Revoke
-                </button>
-              </div>
-            ))
+                  Copy
+                </Button>
+              }
+            >
+              <Typography variant="caption" component="div" sx={{ fontWeight: 700 }}>Copy this key now. It won't be shown again.</Typography>
+              <Box component="code" sx={{ fontSize: 13, wordBreak: 'break-all', fontFamily: 'monospace' }}>{newlyCreatedSecret}</Box>
+            </Alert>
           )}
-        </div>
-      </div>
-    </section>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
+            <TextField
+              size="small"
+              label="Key name"
+              placeholder="e.g. Zapier production"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              sx={{ flex: 1 }}
+            />
+            <Button variant="contained" color="primary" onClick={handleCreateKey} startIcon={<Icon name="add" size={18} />} sx={{ minHeight: 44, whiteSpace: 'nowrap' }}>
+              Create key
+            </Button>
+          </Stack>
+
+          {apiKeys.length === 0 ? (
+            <EmptyState icon="key_off" title="No API keys yet" description="Create a key to connect your own tools." />
+          ) : (
+            <Stack spacing={1}>
+              {apiKeys.map((k, i) => (
+                <Stack
+                  key={k.id}
+                  direction="row"
+                  alignItems="center"
+                  spacing={1.5}
+                  sx={{ p: 1.5, borderRadius: 3, border: 1, borderColor: 'divider', ...(riseSx(i + 2) as object), transition: 'background-color .2s', '&:hover': { bgcolor: 'action.hover' } }}
+                >
+                  <IconTile icon="key" accent="slate" size={36} />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>{k.name}</Typography>
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                      <Chip size="small" variant="outlined" label={k.key_prefix} sx={{ fontFamily: 'monospace' }} />
+                      <Typography variant="caption" color="text.secondary">Created {new Date(k.created_at).toLocaleDateString()}</Typography>
+                    </Stack>
+                  </Box>
+                  <Tooltip title="Revoke key">
+                    <IconButton color="error" aria-label={`Revoke ${k.name}`} onClick={() => handleRevokeKey(k.id)} sx={{ width: 44, height: 44 }}>
+                      <Icon name="delete" size={20} />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+              ))}
+            </Stack>
+          )}
+        </SectionCard>
+      </PageContainer>
+    </Box>
   );
 };

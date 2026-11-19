@@ -1,4 +1,6 @@
 import React from 'react';
+import { Avatar, Box, ButtonBase, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import { Icon, avatarIcon } from '../ui';
 
 export type ViewId =
   | 'view-today'
@@ -42,6 +44,10 @@ interface SidebarProps {
   onCloseMobile?: () => void;
 }
 
+type NavItem = { id: ViewId; icon: string; label: string; count?: number; gold?: boolean };
+
+const isImg = (u: string) => u.startsWith('http') || u.startsWith('data:image');
+
 export const Sidebar: React.FC<SidebarProps> = ({
   activeView,
   setActiveView,
@@ -63,232 +69,158 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onCloseMobile?.();
   };
 
-  return (
-    <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
-      <div className="sidebar-header">
-        <div className="brand-wrapper">
-          <div className="brand-logo-icon">
-            <img src="/icon.svg" alt="Renim AI" />
-          </div>
-          {!collapsed && (
-            <div>
-              <span className="brand-title">Renim AI</span>
-              <span className="brand-version">CLOUD</span>
-            </div>
-          )}
-        </div>
-        {onToggleCollapse && (
-          <button
-            className="mui-btn-icon"
-            onClick={onToggleCollapse}
-            title={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-            style={{ padding: '4px' }}
-          >
-            <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>
-              {collapsed ? 'chevron_right' : 'chevron_left'}
-            </span>
-          </button>
+  const teamLabel =
+    activeOrgName && activeOrgName !== 'Personal' && activeOrgName !== 'Personal Workspace'
+      ? `Team · ${activeOrgName.slice(0, 14)}`
+      : 'Team';
+
+  const groups: Array<{ title: string; items: NavItem[] }> = [
+    {
+      title: 'Workspace',
+      items: [
+        { id: 'view-today', icon: 'wb_sunny', label: 'Today' },
+        { id: 'view-meetings', icon: 'mic', label: 'Meetings', count: counts.meetings },
+        { id: 'view-notes', icon: 'edit_note', label: 'Notes', count: counts.notes },
+        { id: 'view-calendar', icon: 'calendar_month', label: 'Calendar', count: counts.events },
+        { id: 'view-tasks', icon: 'task_alt', label: 'Tasks', count: counts.tasks },
+        { id: 'view-growth', icon: 'local_fire_department', label: 'Habits & Goals' },
+      ],
+    },
+    {
+      title: 'Intelligence',
+      items: [
+        { id: 'view-docs', icon: 'description', label: 'Documents', count: counts.documents },
+        { id: 'view-rag', icon: 'travel_explore', label: 'Knowledge Search' },
+        { id: 'view-chat', icon: 'forum', label: 'Ask Copilot' },
+      ],
+    },
+    {
+      title: 'Organization',
+      items: [
+        { id: 'view-team', icon: 'groups', label: teamLabel },
+        { id: 'view-analytics', icon: 'insights', label: 'Insights' },
+        { id: 'view-integrations', icon: 'hub', label: 'Integrations' },
+        { id: 'view-billing', icon: 'credit_card', label: 'Plan & Billing' },
+        { id: 'view-security', icon: 'shield_lock', label: 'Security' },
+        ...(isSuperAdmin ? [{ id: 'view-superadmin' as ViewId, icon: 'admin_panel_settings', label: 'Super Admin', gold: true }] : []),
+        { id: 'view-settings', icon: 'tune', label: 'Settings' },
+      ],
+    },
+  ];
+
+  const NavButton = ({ item }: { item: NavItem }) => {
+    const on = activeView === item.id;
+    const btn = (
+      <ButtonBase
+        onClick={() => handleSelect(item.id)}
+        aria-current={on ? 'page' : undefined}
+        aria-label={collapsed ? item.label : undefined}
+        sx={(t) => ({
+          width: '100%',
+          height: 40,
+          px: collapsed ? 0 : 1.5,
+          justifyContent: collapsed ? 'center' : 'flex-start',
+          gap: 1.5,
+          borderRadius: '10px',
+          fontFamily: 'inherit',
+          fontSize: 14,
+          fontWeight: on ? 700 : 500,
+          color: on ? 'text.primary' : 'text.secondary',
+          bgcolor: on ? (t.palette.mode === 'dark' ? 'rgba(34,211,238,.12)' : '#ecf3f6') : 'transparent',
+          transition: 'background-color .15s, color .15s',
+          '&:hover': { bgcolor: on ? undefined : t.palette.mode === 'dark' ? 'rgba(148,163,184,.1)' : '#f1f5f9', color: on ? undefined : 'text.primary' },
+          boxShadow: on ? `inset 3px 0 0 ${t.palette.mode === 'dark' ? '#22d3ee' : '#0891b2'}` : 'none',
+        })}
+      >
+        <Icon name={item.icon} size={20} fill={on} sx={{ color: item.gold ? '#f59e0b' : on ? 'secondary.main' : 'inherit' }} />
+        {!collapsed && (
+          <>
+            <Box component="span" sx={{ flex: 1, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</Box>
+            {!!item.count && (
+              <Box component="span" sx={(t) => ({ fontSize: 11, fontWeight: 700, px: 0.9, py: 0.2, borderRadius: 999, bgcolor: on ? 'background.paper' : t.palette.mode === 'dark' ? 'rgba(148,163,184,.14)' : '#f1f5f9', color: on ? 'inherit' : 'text.secondary' })}>
+                {item.count}
+              </Box>
+            )}
+          </>
         )}
-      </div>
+      </ButtonBase>
+    );
+    return collapsed ? <Tooltip title={item.label} placement="right">{btn}</Tooltip> : btn;
+  };
 
-      <nav className="sidebar-nav">
-          <span className="nav-section-title">Workspace</span>
-
-          <a
-            className={`nav-item ${activeView === 'view-today' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-today')}
-          >
-            <span className="material-symbols-rounded">wb_sunny</span>
-            <span>Today</span>
-          </a>
-
-          <a
-            className={`nav-item ${activeView === 'view-meetings' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-meetings')}
-          >
-            <span className="material-symbols-rounded">mic</span>
-            <span>Meetings Hub</span>
-            <span className="nav-badge" id="badge-meetings-count">{counts.meetings}</span>
-          </a>
-
-          <a
-            className={`nav-item ${activeView === 'view-notes' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-notes')}
-          >
-            <span className="material-symbols-rounded">edit_note</span>
-            <span>Smart Notes</span>
-            <span className="nav-badge" id="badge-notes-count">{counts.notes}</span>
-          </a>
-
-          <a
-            className={`nav-item ${activeView === 'view-calendar' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-calendar')}
-          >
-            <span className="material-symbols-rounded">calendar_month</span>
-            <span>Calendar & Alerts</span>
-            <span className="nav-badge" id="badge-events-count">{counts.events}</span>
-          </a>
-
-          <a
-            className={`nav-item ${activeView === 'view-tasks' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-tasks')}
-          >
-            <span className="material-symbols-rounded">task_alt</span>
-            <span>Tasks & To-Do</span>
-            <span className="nav-badge" id="badge-tasks-count">{counts.tasks}</span>
-          </a>
-
-          <a
-            className={`nav-item ${activeView === 'view-growth' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-growth')}
-          >
-            <span className="material-symbols-rounded">local_fire_department</span>
-            <span>Habits, Goals & Tools</span>
-          </a>
-
-          <span className="nav-section-title">Intelligence</span>
-
-          <a
-            className={`nav-item ${activeView === 'view-docs' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-docs')}
-          >
-            <span className="material-symbols-rounded">description</span>
-            <span>Docs & Knowledge AI</span>
-            <span className="nav-badge" id="badge-docs-count">{counts.documents}</span>
-          </a>
-
-          <a
-            className={`nav-item ${activeView === 'view-rag' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-rag')}
-          >
-            <span className="material-symbols-rounded">neurology</span>
-            <span>Enterprise RAG</span>
-          </a>
-
-          <a
-            className={`nav-item ${activeView === 'view-chat' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-chat')}
-          >
-            <span className="material-symbols-rounded">smart_toy</span>
-            <span>Ask Copilot</span>
-          </a>
-
-          <span className="nav-section-title">Enterprise SaaS</span>
-
-          <a
-            className={`nav-item ${activeView === 'view-team' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-team')}
-          >
-            <span className="material-symbols-rounded">corporate_fare</span>
-            <span>
-              {activeOrgName && activeOrgName !== 'Personal' && activeOrgName !== 'Personal Workspace'
-                ? `Team (${activeOrgName.slice(0, 14)})`
-                : 'Team Workspace'}
-            </span>
-          </a>
-
-          <a
-            className={`nav-item ${activeView === 'view-analytics' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-analytics')}
-          >
-            <span className="material-symbols-rounded">analytics</span>
-            <span>Analytics & BI</span>
-          </a>
-
-          <a
-            className={`nav-item ${activeView === 'view-integrations' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-integrations')}
-          >
-            <span className="material-symbols-rounded">hub</span>
-            <span>Integrations & API</span>
-          </a>
-
-          <a
-            className={`nav-item ${activeView === 'view-billing' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-billing')}
-          >
-            <span className="material-symbols-rounded">payments</span>
-            <span>Billing & Quotas</span>
-          </a>
-
-          <a
-            className={`nav-item ${activeView === 'view-security' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-security')}
-          >
-            <span className="material-symbols-rounded">verified_user</span>
-            <span>Security & Audit</span>
-          </a>
-
-          {isSuperAdmin && (
-            <a
-              className={`nav-item ${activeView === 'view-superadmin' ? 'active' : ''}`}
-              onClick={() => handleSelect('view-superadmin')}
-              style={{
-                borderLeft: activeView === 'view-superadmin' ? '3px solid #fbbf24' : undefined,
-              }}
-            >
-              <span className="material-symbols-rounded" style={{ color: '#fbbf24' }}>admin_panel_settings</span>
-              <span>Super Admin Control</span>
-            </a>
+  return (
+    <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`} style={{ padding: 0 }}>
+      <Stack sx={{ height: '100%', minHeight: 0 }}>
+        {/* Brand */}
+        <Stack direction="row" alignItems="center" justifyContent={collapsed ? 'center' : 'space-between'} sx={{ px: collapsed ? 1 : 2, pt: 2.25, pb: 1.25, gap: 1 }}>
+          <Stack direction="row" alignItems="center" spacing={1.25} component="a" href="/" sx={{ color: 'text.primary', textDecoration: 'none', minWidth: 0 }}>
+            <Box component="img" src="/icon.svg" alt="Renim AI" sx={{ width: 32, height: 32, borderRadius: '10px', flex: 'none' }} />
+            {!collapsed && (
+              <Typography sx={{ fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
+                Renim <Box component="span" sx={{ color: 'secondary.main' }}>AI</Box>
+              </Typography>
+            )}
+          </Stack>
+          {onToggleCollapse && !collapsed && (
+            <IconButton size="small" onClick={onToggleCollapse} aria-label="Collapse sidebar" className="sidebar-collapse-btn">
+              <Icon name="left_panel_close" size={19} />
+            </IconButton>
           )}
+        </Stack>
+        {onToggleCollapse && collapsed && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', pb: 1 }}>
+            <IconButton size="small" onClick={onToggleCollapse} aria-label="Expand sidebar"><Icon name="left_panel_open" size={19} /></IconButton>
+          </Box>
+        )}
 
-          <a
-            className={`nav-item ${activeView === 'view-profile' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-profile')}
-          >
-            <span className="material-symbols-rounded">account_circle</span>
-            <span>My Profile</span>
-          </a>
-
-          <a
-            className={`nav-item ${activeView === 'view-settings' ? 'active' : ''}`}
-            onClick={() => handleSelect('view-settings')}
-          >
-            <span className="material-symbols-rounded">tune</span>
-            <span>Settings & Cloud</span>
-          </a>
-      </nav>
-
-      <div className="sidebar-footer">
-        <div
-          className="user-card"
-          id="sidebar-user-card"
-          onClick={() => handleSelect('view-profile')}
-          style={{ cursor: 'pointer' }}
-          title="Open My Profile"
-        >
-          <div className="user-details">
-            <div className="user-avatar" id="user-avatar-initials" style={{ overflow: 'hidden' }}>
-              {userAvatarUrl.startsWith('http') || userAvatarUrl.startsWith('data:image') ? (
-                <img
-                  src={userAvatarUrl}
-                  alt={userName}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
+        {/* Nav */}
+        <Box component="nav" aria-label="Workspace" sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: collapsed ? 1 : 1.5, pb: 1.5 }}>
+          {groups.map((g) => (
+            <Box key={g.title}>
+              {collapsed ? (
+                <Box sx={{ height: 14 }} />
               ) : (
-                userAvatarUrl || (userName ? userName.charAt(0).toUpperCase() : 'U')
+                <Typography variant="overline" component="div" sx={{ color: 'text.disabled', px: 1.5, pt: 2, pb: 0.5, fontSize: 11 }}>
+                  {g.title}
+                </Typography>
               )}
-            </div>
-            <div className="user-meta">
-              <span className="user-name" id="user-display-name">{userName}</span>
-              <span className="user-status" id="user-display-email">{userEmail}</span>
-            </div>
-          </div>
-          <button
-            className="mui-btn-icon"
-            id="btn-auth-trigger"
-            title={isAuthenticated ? 'Sign Out' : 'Sign In / Sign Up'}
-            onClick={(e) => {
-              e.stopPropagation();
-              onAuthTrigger();
-            }}
-          >
-            <span className="material-symbols-rounded" id="icon-auth-action">
-              {isAuthenticated ? 'logout' : 'login'}
-            </span>
-          </button>
-        </div>
-      </div>
+              <Stack spacing={0.25}>
+                {g.items.map((it) => <NavButton key={it.id} item={it} />)}
+              </Stack>
+            </Box>
+          ))}
+        </Box>
+
+        {/* User */}
+        <Box sx={{ p: collapsed ? 1 : 1.5, borderTop: 1, borderColor: 'divider' }}>
+          <Stack direction={collapsed ? 'column' : 'row'} alignItems="center" spacing={1}>
+            <ButtonBase
+              onClick={() => handleSelect('view-profile')}
+              aria-label="Open my profile"
+              sx={{ flex: 1, minWidth: 0, width: collapsed ? 'auto' : undefined, display: 'flex', alignItems: 'center', gap: 1.25, p: 0.75, borderRadius: '12px', justifyContent: 'flex-start', textAlign: 'left', '&:hover': { bgcolor: 'action.hover' } }}
+            >
+              <Avatar
+                src={isImg(userAvatarUrl) ? userAvatarUrl : undefined}
+                alt={userName}
+                sx={{ width: 34, height: 34, fontSize: 14, fontWeight: 800, color: '#0f172a', background: 'linear-gradient(135deg,#67e8f9,#818cf8)', outline: activeView === 'view-profile' ? '2px solid' : 'none', outlineColor: 'secondary.main', outlineOffset: 2 }}
+              >
+                {!isImg(userAvatarUrl) && (avatarIcon(userAvatarUrl) ? <Icon name={avatarIcon(userAvatarUrl)!} size={18} /> : (userAvatarUrl || (userName ? userName.charAt(0).toUpperCase() : 'U')))}
+              </Avatar>
+              {!collapsed && (
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography noWrap sx={{ fontSize: 13, fontWeight: 700 }}>{userName}</Typography>
+                  <Typography noWrap sx={{ fontSize: 12, color: 'text.secondary' }}>{userEmail}</Typography>
+                </Box>
+              )}
+            </ButtonBase>
+            <Tooltip title={isAuthenticated ? 'Sign out' : 'Sign in'}>
+              <IconButton size="small" onClick={onAuthTrigger} aria-label={isAuthenticated ? 'Sign out' : 'Sign in'} id="btn-auth-trigger">
+                <Icon name={isAuthenticated ? 'logout' : 'login'} size={19} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </Box>
+      </Stack>
     </aside>
   );
 };

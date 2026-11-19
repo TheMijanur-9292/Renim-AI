@@ -1,4 +1,6 @@
 import React from 'react';
+import { Button, Dialog, DialogActions, DialogContent, Stack, TextField } from '@mui/material';
+import { DialogHeader, useDialogProps } from './DialogParts';
 
 interface PasteTranscriptModalProps {
   isOpen: boolean;
@@ -11,49 +13,43 @@ export const PasteTranscriptModal: React.FC<PasteTranscriptModalProps> = ({
   onClose,
   onSubmit
 }) => {
+  const { isPhone, ...dialogProps } = useDialogProps();
+
   return (
-    <div id="modal-paste-transcript" className={`modal-backdrop ${isOpen ? '' : 'hidden'}`}>
-      <div className="modal-dialog">
-        <div className="mui-card-header">
-          <h3 className="mui-card-title">
-            <span className="material-symbols-rounded">content_paste</span>
-            <span>Paste Meeting Transcript</span>
-          </h3>
-          <button className="mui-btn-icon modal-close" onClick={onClose}>
-            &times;
-          </button>
-        </div>
-        <form id="form-paste-transcript" onSubmit={onSubmit}>
-          <div className="mui-input-group">
-            <label>Meeting Title</label>
-            <input
-              type="text"
-              name="title"
-              className="mui-input"
-              placeholder="Product Review Call"
-              required
-            />
-          </div>
-          <div className="mui-input-group">
-            <label>Transcript Text</label>
-            <textarea
+    <Dialog
+      {...dialogProps}
+      id="modal-paste-transcript"
+      open={isOpen}
+      // Stays mounted while hidden (as before) and only closes via the close button.
+      keepMounted
+      onClose={() => {}}
+      maxWidth="sm"
+      fullWidth
+      aria-labelledby="modal-paste-transcript-title"
+    >
+      <form id="form-paste-transcript" onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', height: isPhone ? '100%' : undefined }}>
+        <DialogHeader id="modal-paste-transcript-title" icon="content_paste" accent="violet" title="Paste transcript" subtitle="We'll turn it into a summary with action items." onClose={onClose} />
+        <DialogContent sx={{ px: { xs: 2, sm: 3 }, pt: '8px !important', flex: isPhone ? 1 : undefined }}>
+          <Stack spacing={2}>
+            <TextField name="title" label="Meeting title" required fullWidth placeholder="e.g. Product review" />
+            <TextField
               name="transcript"
-              className="mui-input"
-              style={{ height: '140px', resize: 'vertical' }}
-              placeholder="Paste meeting dialogue or speech log here..."
+              label="Transcript"
               required
-            ></textarea>
-          </div>
-          <button
-            type="submit"
-            className="mui-btn mui-btn-primary mui-btn-block"
-            style={{ width: '100%', marginTop: '12px' }}
-          >
-            Summarize with AI
-          </button>
-        </form>
-      </div>
-    </div>
+              fullWidth
+              multiline
+              minRows={6}
+              maxRows={14}
+              placeholder="Paste the conversation here..."
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: { xs: 2, sm: 3 }, pb: { xs: 2, sm: 2.5 }, pt: 1, gap: 1 }}>
+          <Button variant="outlined" onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="contained">Summarize</Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
 };
 

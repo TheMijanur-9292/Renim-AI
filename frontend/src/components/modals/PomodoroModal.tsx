@@ -1,4 +1,9 @@
 import React from 'react';
+import { Box, Button, CircularProgress, Dialog, DialogContent, MenuItem, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { Icon } from '../ui';
+import { DialogHeader, useDialogProps } from './DialogParts';
+
+const MODE_SECONDS = { focus25: 25 * 60, deep50: 50 * 60, break5: 5 * 60 } as const;
 
 export interface PomodoroModalProps {
   isOpen: boolean;
@@ -35,162 +40,139 @@ export const PomodoroModal: React.FC<PomodoroModalProps> = ({
   onToggleTask,
   showToast,
 }) => {
-  if (!isOpen) return null;
+  const { isPhone: _isPhone, ...dialogProps } = useDialogProps();
+  const total = MODE_SECONDS[pomodoroMode];
+  const progress = Math.max(0, Math.min(100, (pomodoroSeconds / total) * 100));
+  const ringColor = pomodoroMode === 'break5' ? 'success.main' : 'primary.main';
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-dialog pomodoro-modal-dialog" onClick={e => e.stopPropagation()}>
-        <div className="mui-card-header" style={{ marginBottom: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span className="material-symbols-rounded" style={{ color: '#06b6d4' }}>timer</span>
-            <h3 className="mui-card-title" style={{ margin: 0 }}>AI Deep Work Focus Studio</h3>
-          </div>
-          <button
-            className="mui-btn-icon modal-close"
-            onClick={onClose}
-          >
-            &times;
-          </button>
-        </div>
+    <Dialog
+      {...dialogProps}
+      open={isOpen}
+      // Backdrop click closes (as before); Escape did not.
+      onClose={(_e, reason) => { if (reason === 'backdropClick') onClose(); }}
+      maxWidth="xs"
+      fullWidth
+      aria-labelledby="pomodoro-modal-title"
+    >
+      <DialogHeader id="pomodoro-modal-title" icon="timer" title="Focus timer" onClose={onClose} />
+      <DialogContent sx={{ px: { xs: 2, sm: 3 }, pt: '8px !important', pb: 3 }}>
+        <ToggleButtonGroup
+          exclusive
+          fullWidth
+          size="small"
+          value={pomodoroMode}
+          aria-label="Session length"
+          sx={{ mb: 3, '& .MuiToggleButton-root': { textTransform: 'none', fontWeight: 600 } }}
+        >
+          <ToggleButton value="focus25" onClick={() => onSetPomodoroMode('focus25')}>25m focus</ToggleButton>
+          <ToggleButton value="deep50" onClick={() => onSetPomodoroMode('deep50')}>50m deep work</ToggleButton>
+          <ToggleButton value="break5" onClick={() => onSetPomodoroMode('break5')}>5m break</ToggleButton>
+        </ToggleButtonGroup>
 
-        {/* Mode selection pills */}
-        <div className="pomodoro-pills-row">
-          <button
-            type="button"
-            className={`pomodoro-pill-btn ${pomodoroMode === 'focus25' ? 'active' : ''}`}
-            onClick={() => onSetPomodoroMode('focus25')}
-          >
-            25m Focus
-          </button>
-          <button
-            type="button"
-            className={`pomodoro-pill-btn ${pomodoroMode === 'deep50' ? 'active' : ''}`}
-            onClick={() => onSetPomodoroMode('deep50')}
-          >
-            50m Deep Work
-          </button>
-          <button
-            type="button"
-            className={`pomodoro-pill-btn ${pomodoroMode === 'break5' ? 'active' : ''}`}
-            onClick={() => onSetPomodoroMode('break5')}
-          >
-            5m Rest Break
-          </button>
-        </div>
+        <Box sx={{ position: 'relative', width: 220, height: 220, mx: 'auto', mb: 3 }}>
+          <CircularProgress variant="determinate" value={100} size={220} thickness={2.4} sx={{ position: 'absolute', inset: 0, color: 'divider' }} />
+          <CircularProgress
+            variant="determinate"
+            value={progress}
+            size={220}
+            thickness={2.4}
+            sx={{
+              position: 'absolute', inset: 0, color: ringColor,
+              '& .MuiCircularProgress-circle': { strokeLinecap: 'round', transition: 'stroke-dashoffset 1s linear' },
+              '@media (prefers-reduced-motion: reduce)': { '& .MuiCircularProgress-circle': { transition: 'none' } },
+            }}
+          />
+          <Stack alignItems="center" justifyContent="center" sx={{ position: 'absolute', inset: 0 }}>
+            <Typography
+              component="div"
+              sx={{ fontSize: 52, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums', m: 0, p: 0, color: 'text.primary' }}
+            >
+              {String(Math.floor(pomodoroSeconds / 60)).padStart(2, '0')}:{String(pomodoroSeconds % 60).padStart(2, '0')}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, fontWeight: 600 }}>
+              {isPomodoroRunning ? 'In progress' : 'Paused'}
+            </Typography>
+          </Stack>
+        </Box>
 
-        {/* Large Digital Digits */}
-        <div className="pomodoro-digits-display">
-          {String(Math.floor(pomodoroSeconds / 60)).padStart(2, '0')}:
-          {String(pomodoroSeconds % 60).padStart(2, '0')}
-        </div>
+        <TextField
+          select
+          fullWidth
+          size="small"
+          label="Focus on"
+          value={focusTaskId || ''}
+          onChange={e => setFocusTaskId(e.target.value || null)}
+          sx={{ mb: 2.5 }}
+          slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
+        >
+          <MenuItem value="">No specific task</MenuItem>
+          {tasks.filter(t => t.status !== 'done').map(t => (
+            <MenuItem key={t.id} value={t.id}>
+              {t.title} ({t.priority || 'Medium'})
+            </MenuItem>
+          ))}
+        </TextField>
 
-        {/* Active Task Selector */}
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{ fontSize: '11.5px', color: 'var(--mui-text-secondary)', display: 'block', marginBottom: '6px' }}>
-            Active Goal / Task Focus:
-          </label>
-          <select
-            className="mui-input"
-            style={{ fontSize: '12.5px', padding: '6px 10px', height: '36px' }}
-            value={focusTaskId || ''}
-            onChange={e => setFocusTaskId(e.target.value || null)}
-          >
-            <option value="">General Deep Work (No specific task)</option>
-            {tasks.filter(t => t.status !== 'done').map(t => (
-              <option key={t.id} value={t.id}>
-                {t.title} ({t.priority || 'Medium'})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Controls (Start, Pause, Reset, Complete Task) */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '24px' }}>
-          <button
-            type="button"
-            className="mui-btn mui-btn-primary"
-            style={{ padding: '8px 24px', fontSize: '14px', gap: '8px' }}
+        <Stack direction="row" spacing={1} justifyContent="center" flexWrap="wrap" useFlexGap sx={{ mb: 3 }}>
+          <Button
+            variant="contained"
+            size="large"
             onClick={() => setIsPomodoroRunning(!isPomodoroRunning)}
+            startIcon={<Icon name={isPomodoroRunning ? 'pause' : 'play_arrow'} size={20} fill />}
+            sx={{ px: 3 }}
           >
-            <span className="material-symbols-rounded icon-sm">
-              {isPomodoroRunning ? 'pause' : 'play_arrow'}
-            </span>
-            <span>{isPomodoroRunning ? 'Pause Session' : 'Start Focus'}</span>
-          </button>
-
-          <button
-            type="button"
-            className="mui-btn mui-btn-outlined"
-            style={{ padding: '8px 16px', fontSize: '14px', gap: '6px' }}
+            {isPomodoroRunning ? 'Pause' : 'Start'}
+          </Button>
+          <Button
+            variant="outlined"
+            size="large"
             onClick={() => {
               setIsPomodoroRunning(false);
               const resetSec = pomodoroMode === 'focus25' ? 25 * 60 : pomodoroMode === 'deep50' ? 50 * 60 : 5 * 60;
               setPomodoroSeconds(resetSec);
             }}
+            startIcon={<Icon name="restart_alt" size={20} />}
           >
-            <span className="material-symbols-rounded icon-sm">restart_alt</span>
-            <span>Reset</span>
-          </button>
-
+            Reset
+          </Button>
           {focusTaskId && (
-            <button
-              type="button"
-              className="mui-btn mui-btn-outlined"
-              style={{ borderColor: '#10b981', color: '#10b981', padding: '8px 14px', fontSize: '13px', gap: '6px' }}
+            <Button
+              variant="outlined"
+              color="success"
+              size="large"
+              title="Mark the focus task as done"
               onClick={() => {
                 onToggleTask(focusTaskId, 'todo');
                 setFocusTaskId(null);
-                showToast('Task marked as Done!', 'success');
+                showToast('Task marked as done', 'success');
               }}
-              title="Mark active focus task complete"
+              startIcon={<Icon name="task_alt" size={20} />}
             >
-              <span className="material-symbols-rounded icon-sm">task_alt</span>
-              <span>Mark Done</span>
-            </button>
+              Mark done
+            </Button>
           )}
-        </div>
+        </Stack>
 
-        {/* Procedural Ambient Sound Synthesizer */}
-        <div style={{ borderTop: '1px solid var(--mui-border)', paddingTop: '16px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--mui-text-secondary)', display: 'block', marginBottom: '10px' }}>
-            Procedural Ambient Sound Generator (Offline)
-          </span>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className={`ambient-pill-btn ${ambientSound === 'off' ? 'active' : ''}`}
-              onClick={() => onToggleAmbient('off')}
-            >
-              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>volume_off</span>
-              <span>Mute</span>
-            </button>
-            <button
-              type="button"
-              className={`ambient-pill-btn ${ambientSound === 'rain' ? 'active' : ''}`}
-              onClick={() => onToggleAmbient('rain')}
-            >
-              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>water_drop</span>
-              <span>Cyber Rain</span>
-            </button>
-            <button
-              type="button"
-              className={`ambient-pill-btn ${ambientSound === 'space' ? 'active' : ''}`}
-              onClick={() => onToggleAmbient('space')}
-            >
-              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>rocket_launch</span>
-              <span>Deep Space</span>
-            </button>
-            <button
-              type="button"
-              className={`ambient-pill-btn ${ambientSound === 'hum' ? 'active' : ''}`}
-              onClick={() => onToggleAmbient('hum')}
-            >
-              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>psychology</span>
-              <span>Binaural Focus (10Hz)</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+        <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2 }}>
+          <Typography variant="overline" color="text.secondary" component="div" sx={{ mb: 1 }}>
+            Background sound
+          </Typography>
+          <ToggleButtonGroup
+            exclusive
+            fullWidth
+            size="small"
+            value={ambientSound}
+            aria-label="Background sound"
+            sx={{ flexWrap: { xs: 'wrap', sm: 'nowrap' }, '& .MuiToggleButton-root': { textTransform: 'none', fontWeight: 600, gap: 0.75, flex: { xs: '1 1 45%', sm: 1 } } }}
+          >
+            <ToggleButton value="off" onClick={() => onToggleAmbient('off')}><Icon name="volume_off" size={16} />Off</ToggleButton>
+            <ToggleButton value="rain" onClick={() => onToggleAmbient('rain')}><Icon name="water_drop" size={16} />Rain</ToggleButton>
+            <ToggleButton value="space" onClick={() => onToggleAmbient('space')}><Icon name="nights_stay" size={16} />Space</ToggleButton>
+            <ToggleButton value="hum" onClick={() => onToggleAmbient('hum')}><Icon name="graphic_eq" size={16} />Hum</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+      </DialogContent>
+    </Dialog>
   );
 };

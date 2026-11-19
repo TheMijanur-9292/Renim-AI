@@ -6,9 +6,8 @@
  */
 
 const ENV_CONFIG = {
-  // Supabase Cloud Configuration
-  SUPABASE_URL: "https://your-project-id.supabase.co",
-  SUPABASE_ANON_KEY: "your-supabase-anon-public-key",
+  // Renim AI workspace (same backend as the web app), e.g. "https://app.renimai.com"
+  RENIM_API_URL: "",
 
   // AI Gateway Configuration
   AI_GATEWAY_URL: "https://api.openai.com/v1",

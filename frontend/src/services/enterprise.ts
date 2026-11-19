@@ -289,7 +289,7 @@ export const fetchAuditLogs = (userEmail: string, actionFilter = '') =>
   );
 
 export interface SecuritySettings {
-  org_id: string;
+  org_id?: string;
   sso_domain: string;
   mfa_enforced: boolean;
   retention_days: number;

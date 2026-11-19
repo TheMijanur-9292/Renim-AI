@@ -1,4 +1,6 @@
 import React from 'react';
+import { Button, Dialog, DialogActions, DialogContent, MenuItem, Stack, TextField } from '@mui/material';
+import { DialogHeader, useDialogProps } from './DialogParts';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -11,52 +13,37 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   onClose,
   onSubmit
 }) => {
-  if (!isOpen) return null;
+  const { isPhone, ...dialogProps } = useDialogProps();
 
   return (
-    <div id="modal-task" className="modal-backdrop">
-      <div className="modal-dialog">
-        <div className="mui-card-header">
-          <h3 className="mui-card-title">
-            <span className="material-symbols-rounded">task</span>
-            <span>Create New Task</span>
-          </h3>
-          <button className="mui-btn-icon modal-close" onClick={onClose}>
-            &times;
-          </button>
-        </div>
-        <form id="form-create-task" onSubmit={onSubmit}>
-          <div className="mui-input-group">
-            <label>Task Title</label>
-            <input
-              type="text"
-              name="title"
-              className="mui-input"
-              required
-              placeholder="e.g. Review database schema"
-            />
-          </div>
-          <div className="mui-input-group">
-            <label>Priority</label>
-            <select name="priority" className="mui-input" defaultValue="Medium">
-              <option value="High">High Priority</option>
-              <option value="Medium">Medium Priority</option>
-              <option value="Low">Low Priority</option>
-            </select>
-          </div>
-          <div className="mui-input-group">
-            <label>Due Date (Optional)</label>
-            <input type="date" name="due_date" className="mui-input" />
-          </div>
-          <button
-            type="submit"
-            className="mui-btn mui-btn-primary mui-btn-block"
-            style={{ width: '100%', marginTop: '12px' }}
-          >
-            Add Task
-          </button>
-        </form>
-      </div>
-    </div>
+    <Dialog
+      {...dialogProps}
+      id="modal-task"
+      open={isOpen}
+      // Original closed only via the close button (no backdrop/Escape close).
+      onClose={() => {}}
+      maxWidth="xs"
+      fullWidth
+      aria-labelledby="modal-task-title"
+    >
+      <form id="form-create-task" onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', height: isPhone ? '100%' : undefined }}>
+        <DialogHeader id="modal-task-title" icon="add_task" title="New task" onClose={onClose} />
+        <DialogContent sx={{ px: { xs: 2, sm: 3 }, pt: '8px !important' }}>
+          <Stack spacing={2}>
+            <TextField name="title" label="Title" required autoFocus fullWidth placeholder="e.g. Review the proposal" />
+            <TextField name="priority" label="Priority" select fullWidth defaultValue="Medium">
+              <MenuItem value="High">High</MenuItem>
+              <MenuItem value="Medium">Medium</MenuItem>
+              <MenuItem value="Low">Low</MenuItem>
+            </TextField>
+            <TextField name="due_date" label="Due date (optional)" type="date" fullWidth slotProps={{ inputLabel: { shrink: true } }} />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: { xs: 2, sm: 3 }, pb: { xs: 2, sm: 2.5 }, pt: 1, gap: 1, mt: isPhone ? 'auto' : 0 }}>
+          <Button variant="outlined" onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="contained">Add task</Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
 };

@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Avatar, Box, Button, Card, CardActionArea, Chip, MenuItem, Skeleton, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography
+} from '@mui/material';
+import { alpha } from '@mui/material/styles';
+import { Icon, IconTile, PageContainer, PageHeader, SectionCard, EmptyState, riseSx } from '../ui';
+import {
   fetchOrganizations,
   createOrganization,
   fetchOrgMembers,
@@ -133,263 +138,299 @@ export const TeamOrgsView: React.FC<TeamOrgsViewProps> = ({
   };
 
   const canManage = myRole === 'owner' || myRole === 'admin';
+  const roleColor = (r: string): 'primary' | 'secondary' | 'default' =>
+    r === 'owner' ? 'primary' : r === 'admin' ? 'secondary' : 'default';
+
+  const cardHover = {
+    transition: 'transform .2s ease, box-shadow .2s ease, border-color .2s ease',
+    '&:hover': { transform: 'translateY(-2px)', boxShadow: 3 },
+    '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
+  };
 
   return (
-    <section className="workspace-view active" id="view-team">
-      <div className="mui-card" style={{ marginBottom: '20px' }}>
-        <div className="card-header-flex">
-          <div>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>
-              Organizations & Multi-Tenant Workspaces
-            </h2>
-            <p className="muted-sm" style={{ marginTop: '4px' }}>
-              Switch between personal and company workspaces, or create a new isolated tenant with RBAC.
-            </p>
-          </div>
-          <span className="status-pill">Your Role: {myRole.toUpperCase()}</span>
-        </div>
+    <Box component="section" className="workspace-view active" id="view-team">
+      <PageContainer>
+        <PageHeader
+          overline="Team"
+          title="Team"
+          description="Switch between workspaces, invite people and choose what each person can do."
+          actions={<Chip icon={<Icon name="badge" size={18} />} label={`Your role: ${myRole.charAt(0).toUpperCase()}${myRole.slice(1)}`} variant="outlined" sx={{ height: 36, fontWeight: 600 }} />}
+        />
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px', marginTop: '14px' }}>
-          {orgs.map((org) => {
-            const isSelected = org.id === activeOrgId;
-            return (
-              <div
-                key={org.id}
-                onClick={() => onSelectOrg(org)}
-                style={{
-                  padding: '14px',
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  border: isSelected ? '2px solid #06b6d4' : '1px solid var(--mui-border)',
-                  background: isSelected ? 'rgba(6, 182, 212, 0.08)' : 'var(--mui-bg-paper)'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <strong style={{ fontSize: '15px' }}>{org.name}</strong>
-                  <span className="cmd-badge">{org.plan.toUpperCase()}</span>
-                </div>
-                <div className="muted-sm" style={{ marginTop: '6px' }}>
-                  {org.member_count} member(s) • Role: {org.my_role}
-                </div>
-                {isSelected && (
-                  <div style={{ marginTop: '8px', fontSize: '11px', color: '#06b6d4', fontWeight: 700 }}>
-                    ● Active Workspace
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <Stack spacing={2.5}>
+          {/* Workspaces */}
+          <SectionCard index={1} icon="apartment" accent="indigo" title="Workspaces" subtitle="Each workspace keeps its own people and content separate">
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)', xl: 'repeat(4, 1fr)' }, gap: 1.5 }}>
+              {orgs.map((org, i) => {
+                const isSelected = org.id === activeOrgId;
+                return (
+                  <Card
+                    key={org.id}
+                    variant="outlined"
+                    sx={(t) => ({
+                      ...(riseSx(i + 2) as object),
+                      ...cardHover,
+                      borderWidth: isSelected ? 2 : 1,
+                      borderColor: isSelected ? t.palette.secondary.main : t.palette.divider,
+                      bgcolor: isSelected ? alpha(t.palette.secondary.main, 0.06) : t.palette.background.paper,
+                    })}
+                  >
+                    <CardActionArea onClick={() => onSelectOrg(org)} sx={{ p: 2, minHeight: 44 }} aria-pressed={isSelected}>
+                      <Stack direction="row" alignItems="center" spacing={1.5}>
+                        <Avatar variant="rounded" sx={{ bgcolor: isSelected ? 'secondary.main' : 'primary.main', color: isSelected ? '#fff' : 'primary.contrastText', width: 40, height: 40, fontWeight: 700, borderRadius: '12px' }}>
+                          {org.name.charAt(0).toUpperCase()}
+                        </Avatar>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="subtitle1" noWrap>{org.name}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {org.member_count} member(s) · {org.my_role}
+                          </Typography>
+                        </Box>
+                        <Chip size="small" label={org.plan.toUpperCase()} />
+                      </Stack>
+                      {isSelected && (
+                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 1.25, color: 'secondary.main' }}>
+                          <Icon name="check_circle" size={16} fill />
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: 'inherit' }}>Active workspace</Typography>
+                        </Stack>
+                      )}
+                    </CardActionArea>
+                  </Card>
+                );
+              })}
+            </Box>
 
-        <div style={{ display: 'flex', gap: '10px', marginTop: '16px', flexWrap: 'wrap' }}>
-          <input
-            type="text"
-            className="mui-input"
-            placeholder="New Organization Name (e.g. Acme Engineering)"
-            value={newOrgName}
-            onChange={(e) => setNewOrgName(e.target.value)}
-            style={{ flex: 1, minWidth: '220px' }}
-          />
-          <select className="mui-input" value={newOrgPlan} onChange={(e) => setNewOrgPlan(e.target.value)} style={{ width: '140px' }}>
-            <option value="starter">Starter</option>
-            <option value="pro">Pro</option>
-            <option value="team">Team</option>
-            <option value="enterprise">Enterprise</option>
-          </select>
-          <button className="mui-btn mui-btn-primary" onClick={handleCreateOrg}>
-            <span className="material-symbols-rounded icon-sm">add_business</span>
-            <span>Create Workspace</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="mui-card">
-        <div className="card-header-flex">
-          <div>
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Team Members & RBAC Permissions</h3>
-            <p className="muted-sm" style={{ marginTop: '4px' }}>
-              Roles: Owner (Full), Admin (Manage Team & Billing), Editor (Create/Edit), Member, Viewer (Read-only).
-            </p>
-          </div>
-        </div>
-
-        {canManage && (
-          <div style={{ display: 'flex', gap: '10px', marginTop: '12px', marginBottom: '18px', flexWrap: 'wrap' }}>
-            <input
-              type="email"
-              className="mui-input"
-              placeholder="teammate@company.com"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              style={{ flex: 1, minWidth: '200px' }}
-            />
-            <input
-              type="text"
-              className="mui-input"
-              placeholder="Full Name (optional)"
-              value={inviteName}
-              onChange={(e) => setInviteName(e.target.value)}
-              style={{ width: '180px' }}
-            />
-            <select className="mui-input" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} style={{ width: '130px' }}>
-              <option value="admin">Admin</option>
-              <option value="editor">Editor</option>
-              <option value="member">Member</option>
-              <option value="viewer">Viewer</option>
-            </select>
-            <button className="mui-btn mui-btn-primary" onClick={handleInvite}>
-              <span className="material-symbols-rounded icon-sm">person_add</span>
-              <span>Invite Member</span>
-            </button>
-          </div>
-        )}
-
-        {loading ? (
-          <p className="muted-sm">Loading members...</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {members.map((m) => (
-              <div
-                key={m.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: '1px solid var(--mui-border)',
-                  background: 'var(--mui-bg-paper)'
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600 }}>{m.full_name || m.user_email}</div>
-                  <div className="muted-sm">{m.user_email} • Status: {m.status}</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {canManage && m.user_email !== userEmail ? (
-                    <>
-                      <select
-                        className="mui-input"
-                        value={m.role}
-                        onChange={(e) => handleRoleChange(m.user_email, e.target.value)}
-                        style={{ width: '120px', padding: '6px 8px' }}
-                      >
-                        <option value="owner">Owner</option>
-                        <option value="admin">Admin</option>
-                        <option value="editor">Editor</option>
-                        <option value="member">Member</option>
-                        <option value="viewer">Viewer</option>
-                      </select>
-                      <button
-                        className="mui-btn mui-btn-outlined mui-btn-sm"
-                        style={{ color: '#ef4444', borderColor: '#ef4444' }}
-                        onClick={() => handleRemove(m.user_email)}
-                      >
-                        Remove
-                      </button>
-                    </>
-                  ) : (
-                    <span className="cmd-badge">{m.role.toUpperCase()}</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Pending Invites */}
-      {pendingInvites.length > 0 && (
-        <div className="mui-card" style={{ marginTop: '18px', borderColor: '#06b6d4' }}>
-          <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: 700 }}>Pending Organization Invites</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {pendingInvites.map((inv) => (
-              <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--mui-border)' }}>
-                <div>
-                  <strong>{inv.name}</strong> <span className="cmd-badge">{inv.role.toUpperCase()}</span>
-                </div>
-                <button
-                  className="mui-btn mui-btn-primary mui-btn-sm"
-                  onClick={async () => {
-                    const res = await acceptOrgInvite(inv.id, userEmail);
-                    if (res.member) {
-                      showToast(`Joined ${inv.name}!`);
-                      setPendingInvites((prev) => prev.filter((x) => x.id !== inv.id));
-                      loadOrgs();
-                    }
-                  }}
-                >
-                  Accept Invite
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* White-Label Tenant Branding & Shared Team Feed */}
-      {activeOrgId && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '18px', marginTop: '18px' }}>
-          <div className="mui-card">
-            <h3 style={{ margin: '0 0 6px 0', fontSize: '16px', fontWeight: 700 }}>White-Label Tenant Branding</h3>
-            <p className="muted-sm" style={{ marginBottom: '12px' }}>Customize organization name & primary accent color (Admin/Owner only).</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <input
-                className="mui-input"
-                placeholder="Workspace Display Name"
-                value={brandName}
-                onChange={(e) => setBrandName(e.target.value)}
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 2.5 }} alignItems={{ sm: 'center' }}>
+              <TextField
+                label="New workspace name"
+                placeholder="e.g. Acme Marketing"
+                size="small"
+                value={newOrgName}
+                onChange={(e) => setNewOrgName(e.target.value)}
+                sx={{ flex: 1 }}
               />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <label style={{ fontSize: '13px' }}>Brand Accent:</label>
-                <input type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} style={{ width: '44px', height: '32px', border: 'none', background: 'transparent', cursor: 'pointer' }} />
-                <span className="muted-sm">{brandColor}</span>
-              </div>
-              <button
-                className="mui-btn mui-btn-primary mui-btn-sm"
-                onClick={async () => {
-                  const res = await updateTenantBranding({
-                    org_id: activeOrgId,
-                    name: brandName || undefined,
-                    brand_color: brandColor,
-                    user_email: userEmail
-                  });
-                  if (res.error) showToast(res.error);
-                  else {
-                    showToast('Tenant branding updated!');
-                    loadOrgs();
-                  }
-                }}
-              >
-                Save Branding
-              </button>
-            </div>
-          </div>
+              <TextField select label="Plan" size="small" value={newOrgPlan} onChange={(e) => setNewOrgPlan(e.target.value)} sx={{ minWidth: { sm: 150 } }}>
+                <MenuItem value="starter">Starter</MenuItem>
+                <MenuItem value="pro">Pro</MenuItem>
+                <MenuItem value="team">Team</MenuItem>
+                <MenuItem value="enterprise">Enterprise</MenuItem>
+              </TextField>
+              <Button variant="contained" color="primary" onClick={handleCreateOrg} startIcon={<Icon name="add_business" size={18} />} sx={{ minHeight: 44, whiteSpace: 'nowrap' }}>
+                Create workspace
+              </Button>
+            </Stack>
+          </SectionCard>
 
-          <div className="mui-card">
-            <h3 style={{ margin: '0 0 6px 0', fontSize: '16px', fontWeight: 700 }}>Team Shared Workspace Feed</h3>
-            <p className="muted-sm" style={{ marginBottom: '12px' }}>
-              Notes, Tasks & Meetings shared with this organization ({sharedFeed.notes.length} notes · {sharedFeed.tasks.length} tasks).
-            </p>
-            {sharedFeed.notes.length === 0 && sharedFeed.tasks.length === 0 ? (
-              <p className="muted-sm">No items shared to this team yet. Open Smart Notes and click "Share to Team Feed".</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '220px', overflowY: 'auto' }}>
-                {sharedFeed.notes.map((n) => (
-                  <div key={n.id} style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--mui-border)', fontSize: '12.5px' }}>
-                    <strong>Note:</strong> {n.title || 'Untitled'} <span className="muted-sm">by {n.user_email}</span>
-                  </div>
-                ))}
-                {sharedFeed.tasks.map((t) => (
-                  <div key={t.id} style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--mui-border)', fontSize: '12.5px' }}>
-                    <strong>Task:</strong> {t.title} <span className="muted-sm">({t.priority})</span>
-                  </div>
-                ))}
-              </div>
+          {/* Members */}
+          <SectionCard
+            index={3}
+            icon="group"
+            accent="cyan"
+            title="Members & roles"
+            subtitle="Owner: full access · Admin: manage team and billing · Editor: create and edit · Member · Viewer: read only"
+          >
+            {canManage && (
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 2.5 }}>
+                <TextField type="email" label="Email" placeholder="teammate@company.com" size="small" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} sx={{ flex: 1.4 }} />
+                <TextField label="Full name (optional)" size="small" value={inviteName} onChange={(e) => setInviteName(e.target.value)} sx={{ flex: 1 }} />
+                <TextField select label="Role" size="small" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} sx={{ minWidth: { md: 140 } }}>
+                  <MenuItem value="admin">Admin</MenuItem>
+                  <MenuItem value="editor">Editor</MenuItem>
+                  <MenuItem value="member">Member</MenuItem>
+                  <MenuItem value="viewer">Viewer</MenuItem>
+                </TextField>
+                <Button variant="contained" color="primary" onClick={handleInvite} startIcon={<Icon name="person_add" size={18} />} sx={{ minHeight: 44, whiteSpace: 'nowrap' }}>
+                  Invite
+                </Button>
+              </Stack>
             )}
-          </div>
-        </div>
-      )}
-    </section>
+
+            {loading ? (
+              <Stack spacing={1}>
+                {[0, 1, 2].map((i) => <Skeleton key={i} variant="rounded" height={52} />)}
+                <Typography variant="body2" color="text.secondary">Loading members...</Typography>
+              </Stack>
+            ) : (
+              <Box sx={{ overflowX: 'auto', border: 1, borderColor: 'divider', borderRadius: 3 }}>
+                <Table size="small" sx={{ minWidth: 560 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Person</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell align="right">Role</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {members.map((m, i) => (
+                      <TableRow key={m.id} hover sx={{ ...(riseSx(i + 3) as object), '&:last-child td': { borderBottom: 0 } }}>
+                        <TableCell>
+                          <Stack direction="row" spacing={1.5} alignItems="center">
+                            <Avatar sx={{ width: 34, height: 34, fontSize: 14, bgcolor: 'action.selected', color: 'text.primary' }}>
+                              {(m.full_name || m.user_email).charAt(0).toUpperCase()}
+                            </Avatar>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>{m.full_name || m.user_email}</Typography>
+                              <Typography variant="caption" color="text.secondary" noWrap component="div">{m.user_email}</Typography>
+                            </Box>
+                          </Stack>
+                        </TableCell>
+                        <TableCell>
+                          <Chip size="small" variant="outlined" color={m.status === 'active' ? 'success' : 'default'} label={m.status} />
+                        </TableCell>
+                        <TableCell align="right">
+                          {canManage && m.user_email !== userEmail ? (
+                            <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
+                              <TextField
+                                select
+                                size="small"
+                                label="Role"
+                                value={m.role}
+                                onChange={(e) => handleRoleChange(m.user_email, e.target.value)}
+                                sx={{ minWidth: 120 }}
+                              >
+                                <MenuItem value="owner">Owner</MenuItem>
+                                <MenuItem value="admin">Admin</MenuItem>
+                                <MenuItem value="editor">Editor</MenuItem>
+                                <MenuItem value="member">Member</MenuItem>
+                                <MenuItem value="viewer">Viewer</MenuItem>
+                              </TextField>
+                              <Button variant="outlined" color="error" size="small" onClick={() => handleRemove(m.user_email)} sx={{ minHeight: 40 }}>
+                                Remove
+                              </Button>
+                            </Stack>
+                          ) : (
+                            <Chip size="small" color={roleColor(m.role)} label={m.role.toUpperCase()} />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
+          </SectionCard>
+
+          {/* Pending Invites */}
+          {pendingInvites.length > 0 && (
+            <SectionCard index={4} icon="mail" accent="amber" title="Invitations for you" subtitle="Join a workspace you were invited to" sx={{ borderColor: 'secondary.main' }}>
+              <Stack spacing={1}>
+                {pendingInvites.map((inv) => (
+                  <Stack
+                    key={inv.id}
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1.5}
+                    alignItems={{ xs: 'stretch', sm: 'center' }}
+                    sx={{ p: 1.5, borderRadius: 3, border: 1, borderColor: 'divider' }}
+                  >
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle1" noWrap>{inv.name}</Typography>
+                      <Chip size="small" label={inv.role.toUpperCase()} />
+                    </Stack>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      sx={{ minHeight: 44 }}
+                      onClick={async () => {
+                        const res = await acceptOrgInvite(inv.id, userEmail);
+                        if (res.member) {
+                          showToast(`Joined ${inv.name}!`);
+                          setPendingInvites((prev) => prev.filter((x) => x.id !== inv.id));
+                          loadOrgs();
+                        }
+                      }}
+                    >
+                      Accept invite
+                    </Button>
+                  </Stack>
+                ))}
+              </Stack>
+            </SectionCard>
+          )}
+
+          {/* Branding & Shared Feed */}
+          {activeOrgId && (
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2.5 }}>
+              <SectionCard index={5} icon="palette" accent="violet" title="Branding" subtitle="Workspace name and accent color (admins and owners only)">
+                <Stack spacing={2}>
+                  <TextField label="Workspace display name" size="small" value={brandName} onChange={(e) => setBrandName(e.target.value)} fullWidth />
+                  <Stack direction="row" alignItems="center" spacing={1.5}>
+                    <Box
+                      component="label"
+                      sx={{ width: 44, height: 44, borderRadius: '12px', bgcolor: brandColor, border: 1, borderColor: 'divider', cursor: 'pointer', position: 'relative', overflow: 'hidden', flex: 'none' }}
+                    >
+                      <Box
+                        component="input"
+                        type="color"
+                        aria-label="Accent color"
+                        value={brandColor}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBrandColor(e.target.value)}
+                        sx={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 0, p: 0 }}
+                      />
+                    </Box>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>Accent color</Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{brandColor}</Typography>
+                    </Box>
+                  </Stack>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    sx={{ minHeight: 44, alignSelf: { xs: 'stretch', sm: 'flex-start' } }}
+                    onClick={async () => {
+                      const res = await updateTenantBranding({
+                        org_id: activeOrgId,
+                        name: brandName || undefined,
+                        brand_color: brandColor,
+                        user_email: userEmail
+                      });
+                      if (res.error) showToast(res.error);
+                      else {
+                        showToast('Branding updated!');
+                        loadOrgs();
+                      }
+                    }}
+                  >
+                    Save branding
+                  </Button>
+                </Stack>
+              </SectionCard>
+
+              <SectionCard
+                index={6}
+                icon="dynamic_feed"
+                accent="green"
+                title="Shared with the team"
+                subtitle={`${sharedFeed.notes.length} notes · ${sharedFeed.tasks.length} tasks shared with this workspace`}
+              >
+                {sharedFeed.notes.length === 0 && sharedFeed.tasks.length === 0 ? (
+                  <EmptyState icon="share" title="Nothing shared yet" description="Open Smart Notes and choose Share to Team Feed." />
+                ) : (
+                  <Stack spacing={1} sx={{ maxHeight: 260, overflowY: 'auto', pr: 0.5 }}>
+                    {sharedFeed.notes.map((n) => (
+                      <Stack key={n.id} direction="row" spacing={1.25} alignItems="center" sx={{ p: 1.25, borderRadius: 2.5, border: 1, borderColor: 'divider' }}>
+                        <IconTile icon="description" accent="indigo" size={30} />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>{n.title || 'Untitled'}</Typography>
+                          <Typography variant="caption" color="text.secondary">Note · by {n.user_email}</Typography>
+                        </Box>
+                      </Stack>
+                    ))}
+                    {sharedFeed.tasks.map((t) => (
+                      <Stack key={t.id} direction="row" spacing={1.25} alignItems="center" sx={{ p: 1.25, borderRadius: 2.5, border: 1, borderColor: 'divider' }}>
+                        <IconTile icon="task_alt" accent="green" size={30} />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>{t.title}</Typography>
+                          <Typography variant="caption" color="text.secondary">Task · {t.priority}</Typography>
+                        </Box>
+                      </Stack>
+                    ))}
+                  </Stack>
+                )}
+              </SectionCard>
+            </Box>
+          )}
+        </Stack>
+      </PageContainer>
+    </Box>
   );
 };

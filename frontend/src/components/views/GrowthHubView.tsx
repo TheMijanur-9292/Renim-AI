@@ -25,6 +25,56 @@ import {
   generateMeetingFollowup,
   type MindMapResult
 } from '../../services/tenant';
+import {
+  Box,
+  Button,
+  Card,
+  Chip,
+  CircularProgress,
+  IconButton,
+  LinearProgress,
+  MenuItem,
+  Slider,
+  Stack,
+  Tab,
+  Tabs,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography
+} from '@mui/material';
+import { alpha, keyframes } from '@mui/material/styles';
+import { EmptyState, Icon, IconTile, PageContainer, PageHeader, SectionCard, riseSx } from '../ui';
+
+const popIn = keyframes`
+  from { opacity: 0; transform: scale(.4); }
+  to   { opacity: 1; transform: none; }
+`;
+
+const MOOD_ICONS: Record<string, { icon: string; label: string }> = {
+  '🚀': { icon: 'rocket_launch', label: 'Great' },
+  '😊': { icon: 'sentiment_satisfied', label: 'Good' },
+  '😐': { icon: 'sentiment_neutral', label: 'Okay' },
+  '😓': { icon: 'sentiment_stressed', label: 'Tough' },
+  '🔥': { icon: 'local_fire_department', label: 'On fire' }
+};
+
+const hoverLift = {
+  transition: 'transform .2s ease, box-shadow .2s ease, border-color .2s ease',
+  '&:hover': { transform: 'translateY(-2px)', boxShadow: 3 },
+  '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } }
+} as const;
+
+const markdownSx = {
+  fontSize: 14,
+  lineHeight: 1.65,
+  overflowWrap: 'anywhere',
+  '& h1, & h2, & h3': { fontSize: 16, fontWeight: 700, mt: 1.5, mb: 0.75 },
+  '& p': { my: 0.75 },
+  '& ul, & ol': { pl: 2.5, my: 0.75 }
+} as const;
+
 
 interface GrowthHubViewProps {
   userEmail: string;
@@ -149,603 +199,682 @@ export const GrowthHubView: React.FC<GrowthHubViewProps> = ({
 
   const totalCompletedToday = habits.filter((h) => (h.completed_dates || []).includes(todayStr)).length;
 
+  const hubTabs: { id: HubTab; label: string; icon: string }[] = [
+    { id: 'habits', label: 'Habits', icon: 'local_fire_department' },
+    { id: 'goals', label: 'Goals', icon: 'flag' },
+    { id: 'journal', label: 'Journal', icon: 'menu_book' },
+    { id: 'url', label: 'Summarize link', icon: 'link' },
+    { id: 'flashcards', label: 'Flashcards', icon: 'style' },
+    { id: 'mindmap', label: 'Mind map', icon: 'account_tree' }
+  ];
+  const todayPct = habits.length ? Math.round((totalCompletedToday / habits.length) * 100) : 0;
+
   return (
     <section className="workspace-view active" id="view-growth">
-      <div className="mui-card" style={{ marginBottom: '18px' }}>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {[
-            { id: 'habits', label: 'Habits & Streaks', icon: 'local_fire_department' },
-            { id: 'goals', label: 'Goals & OKRs', icon: 'flag' },
-            { id: 'journal', label: 'Daily Journal & Weekly AI', icon: 'menu_book' },
-            { id: 'url', label: 'Web URL Summarizer', icon: 'link' },
-            { id: 'flashcards', label: 'AI Flashcards', icon: 'style' },
-            { id: 'mindmap', label: 'AI Mind-Map & Follow-Up', icon: 'account_tree' }
-          ].map((t) => (
-            <button
-              key={t.id}
-              className={`mui-btn mui-btn-sm ${tab === t.id ? 'mui-btn-primary' : 'mui-btn-outlined'}`}
-              onClick={() => setTab(t.id as HubTab)}
+      <PageContainer>
+        <PageHeader
+          overline="Personal growth"
+          title="Habits & Goals"
+          description="Build streaks, track goals, reflect daily and learn faster."
+        />
+
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3, ...riseSx(1) }}>
+          <Tabs
+            value={tab}
+            onChange={(_, v) => setTab(v as HubTab)}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            aria-label="Habits and goals sections"
+          >
+            {hubTabs.map((t) => (
+              <Tab key={t.id} value={t.id} icon={<Icon name={t.icon} size={18} />} iconPosition="start" label={t.label} sx={{ minHeight: 48 }} />
+            ))}
+          </Tabs>
+        </Box>
+
+        {/* TAB 1: HABITS & HEATMAP */}
+        {tab === 'habits' && (
+          <Stack spacing={2.5}>
+            <SectionCard
+              index={2}
+              icon="local_fire_department"
+              accent="amber"
+              title="Daily habits"
+              subtitle={`Done today: ${totalCompletedToday} of ${habits.length}`}
             >
-              <span className="material-symbols-rounded icon-sm">{t.icon}</span>
-              <span>{t.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+              <LinearProgress
+                variant="determinate"
+                value={todayPct}
+                color="secondary"
+                aria-label="Habits completed today"
+                sx={{ height: 8, borderRadius: 4, mb: 2.5, '& .MuiLinearProgress-bar': { borderRadius: 4, transition: 'transform .8s cubic-bezier(.2,.7,.2,1)' } }}
+              />
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                <TextField
+                  label="New habit"
+                  placeholder="e.g. Read 20 pages, Walk 30 min"
+                  value={habitTitle}
+                  onChange={(e) => setHabitTitle(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter' && habitTitle.trim()) {
+                      await createHabit(habitTitle.trim(), 5, userEmail);
+                      setHabitTitle('');
+                      loadData();
+                    }
+                  }}
+                  fullWidth
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<Icon name="add" />}
+                  sx={{ minHeight: 56, flex: 'none' }}
+                  onClick={async () => {
+                    if (!habitTitle.trim()) return showToast('Enter a habit name');
+                    await createHabit(habitTitle.trim(), 5, userEmail);
+                    setHabitTitle('');
+                    showToast('Habit added!');
+                    loadData();
+                  }}
+                >
+                  Add habit
+                </Button>
+              </Stack>
+            </SectionCard>
 
-      {/* TAB 1: HABITS & HEATMAP */}
-      {tab === 'habits' && (
-        <div className="mui-card">
-          <div className="card-header-flex" style={{ marginBottom: '14px' }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Daily Habit Tracker & 28-Day Heatmap</h2>
-              <p className="muted-sm" style={{ marginTop: '4px' }}>
-                Completed today: <strong>{totalCompletedToday} / {habits.length}</strong> habits
-              </p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
-            <input
-              type="text"
-              className="mui-input"
-              placeholder="New daily habit (e.g. Deep Work 60m, Read 20 pages, Exercise)"
-              value={habitTitle}
-              onChange={(e) => setHabitTitle(e.target.value)}
-              onKeyDown={async (e) => {
-                if (e.key === 'Enter' && habitTitle.trim()) {
-                  await createHabit(habitTitle.trim(), 5, userEmail);
-                  setHabitTitle('');
-                  loadData();
-                }
-              }}
-              style={{ flex: 1 }}
-            />
-            <button
-              className="mui-btn mui-btn-primary"
-              onClick={async () => {
-                if (!habitTitle.trim()) return showToast('Enter a habit name');
-                await createHabit(habitTitle.trim(), 5, userEmail);
-                setHabitTitle('');
-                showToast('Habit added!');
-                loadData();
-              }}
-            >
-              Add Habit
-            </button>
-          </div>
-
-          {habits.length === 0 ? (
-            <p className="muted-sm">No habits yet. Add your first daily habit above to start your streak!</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {habits.map((h) => {
-                const dates = h.completed_dates || [];
-                const doneToday = dates.includes(todayStr);
-                const streak = calcStreak(dates);
-                return (
-                  <div
-                    key={h.id}
-                    style={{
-                      padding: '14px',
-                      borderRadius: '12px',
-                      border: '1px solid var(--mui-border)',
-                      background: 'var(--mui-bg-paper)'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <button
-                          className={`mui-btn mui-btn-sm ${doneToday ? 'mui-btn-primary' : 'mui-btn-outlined'}`}
+            {habits.length === 0 ? (
+              <Card sx={riseSx(3)}>
+                <EmptyState icon="local_fire_department" title="No habits yet" description="Add your first daily habit above to start a streak." />
+              </Card>
+            ) : (
+              <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' } }}>
+                {habits.map((h, hi) => {
+                  const dates = h.completed_dates || [];
+                  const doneToday = dates.includes(todayStr);
+                  const streak = calcStreak(dates);
+                  return (
+                    <Card key={h.id} sx={{ p: 2.25, ...riseSx(hi + 3), ...hoverLift }}>
+                      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
+                        <IconButton
+                          aria-label={doneToday ? `Mark ${h.title} as not done` : `Check in ${h.title}`}
                           onClick={async () => {
                             await toggleHabitToday(h.id, todayStr, userEmail);
                             loadData();
                           }}
-                        >
-                          <span className="material-symbols-rounded icon-sm">
-                            {doneToday ? 'check_circle' : 'radio_button_unchecked'}
-                          </span>
-                          <span>{doneToday ? 'Done Today' : 'Check In'}</span>
-                        </button>
-                        <strong style={{ fontSize: '15px' }}>{h.title}</strong>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span className="cmd-badge" style={{ color: '#f59e0b' }}>🔥 {streak} day streak</span>
-                        <button
-                          className="mui-btn-icon"
-                          title="Delete habit"
-                          onClick={async () => {
-                            await deleteHabit(h.id, userEmail);
-                            loadData();
+                          sx={{
+                            width: 44,
+                            height: 44,
+                            border: 1,
+                            borderColor: doneToday ? 'success.main' : 'divider',
+                            color: doneToday ? 'success.main' : 'text.secondary',
+                            bgcolor: (t) => (doneToday ? alpha(t.palette.success.main, 0.12) : 'transparent')
                           }}
                         >
-                          <span className="material-symbols-rounded icon-sm">delete</span>
-                        </button>
-                      </div>
-                    </div>
-                    <div style={{ overflowX: 'auto', paddingBottom: '4px' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(28, minmax(8px, 1fr))', gap: '4px', minWidth: '280px' }}>
-                        {last28.map((d) => {
-                          const hit = dates.includes(d);
-                          return (
-                            <div
-                              key={d}
-                              title={`${d}: ${hit ? 'Completed' : 'Missed'}`}
-                              style={{
-                                height: '14px',
-                                borderRadius: '3px',
-                                background: hit ? '#10b981' : 'var(--mui-border)',
-                                opacity: hit ? 1 : 0.45
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+                          <Icon name={doneToday ? 'check_circle' : 'radio_button_unchecked'} fill={doneToday} size={24} />
+                        </IconButton>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>{h.title}</Typography>
+                          <Typography variant="caption" color="text.secondary">{doneToday ? 'Done today' : 'Not checked in yet'}</Typography>
+                        </Box>
+                        <Chip
+                          size="small"
+                          icon={<Icon name="local_fire_department" size={16} fill />}
+                          label={`${streak} day${streak === 1 ? '' : 's'}`}
+                          sx={{ fontWeight: 700, color: 'warning.main', bgcolor: (t) => alpha(t.palette.warning.main, 0.12), '& .MuiChip-icon': { color: 'warning.main' } }}
+                        />
+                        <Tooltip title="Delete habit">
+                          <IconButton
+                            aria-label={`Delete habit ${h.title}`}
+                            sx={{ width: 44, height: 44 }}
+                            onClick={async () => {
+                              await deleteHabit(h.id, userEmail);
+                              loadData();
+                            }}
+                          >
+                            <Icon name="delete" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>Last 28 days</Typography>
+                      <Box sx={{ overflowX: 'auto', pb: 0.5 }}>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(28, minmax(8px, 1fr))', gap: '4px', minWidth: 280 }}>
+                          {last28.map((d, di) => {
+                            const hit = dates.includes(d);
+                            return (
+                              <Box
+                                key={d}
+                                title={`${d}: ${hit ? 'Completed' : 'Missed'}`}
+                                sx={{
+                                  height: 14,
+                                  borderRadius: '4px',
+                                  bgcolor: hit ? 'success.main' : 'divider',
+                                  opacity: hit ? 1 : 0.6,
+                                  animation: `${popIn} .35s ease both`,
+                                  animationDelay: `${di * 15}ms`,
+                                  '@media (prefers-reduced-motion: reduce)': { animation: 'none' }
+                                }}
+                              />
+                            );
+                          })}
+                        </Box>
+                      </Box>
+                    </Card>
+                  );
+                })}
+              </Box>
+            )}
+          </Stack>
+        )}
 
-      {/* TAB 2: GOALS & OKRs */}
-      {tab === 'goals' && (
-        <div className="mui-card">
-          <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 700 }}>Goals & OKR Progress Tracker</h2>
-          <p className="muted-sm" style={{ marginBottom: '14px' }}>
-            Track quarterly objectives, personal milestones, and project progress.
-          </p>
+        {/* TAB 2: GOALS */}
+        {tab === 'goals' && (
+          <Stack spacing={2.5}>
+            <SectionCard index={2} icon="flag" accent="indigo" title="Goals" subtitle="Track milestones and move progress as you go.">
+              <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '2fr 1fr 1fr auto' } }}>
+                <TextField
+                  label="Goal"
+                  placeholder="e.g. Finish the quarterly plan"
+                  value={goalTitle}
+                  onChange={(e) => setGoalTitle(e.target.value)}
+                  fullWidth
+                  sx={{ gridColumn: { sm: '1 / -1', md: 'auto' } }}
+                />
+                <TextField select label="Category" value={goalCategory} onChange={(e) => setGoalCategory(e.target.value)} fullWidth>
+                  <MenuItem value="Work">Work</MenuItem>
+                  <MenuItem value="Learning">Learning</MenuItem>
+                  <MenuItem value="Health">Health</MenuItem>
+                  <MenuItem value="Finance">Finance</MenuItem>
+                </TextField>
+                <TextField
+                  type="date"
+                  label="Target date"
+                  value={goalDate}
+                  onChange={(e) => setGoalDate(e.target.value)}
+                  fullWidth
+                  slotProps={{ inputLabel: { shrink: true } }}
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<Icon name="add" />}
+                  sx={{ minHeight: 56 }}
+                  onClick={async () => {
+                    if (!goalTitle.trim()) return showToast('Enter a goal title');
+                    await createGoal(goalTitle.trim(), goalCategory, goalDate, userEmail);
+                    setGoalTitle('');
+                    showToast('Goal created!');
+                    loadData();
+                  }}
+                >
+                  Add goal
+                </Button>
+              </Box>
+            </SectionCard>
 
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-            <input
-              type="text"
-              className="mui-input"
-              placeholder="Goal title (e.g. Launch Renim AI v2.0)"
-              value={goalTitle}
-              onChange={(e) => setGoalTitle(e.target.value)}
-              style={{ flex: 1, minWidth: '200px' }}
-            />
-            <select className="mui-input" value={goalCategory} onChange={(e) => setGoalCategory(e.target.value)} style={{ width: '130px' }}>
-              <option value="Work">Work</option>
-              <option value="Learning">Learning</option>
-              <option value="Health">Health</option>
-              <option value="Finance">Finance</option>
-            </select>
-            <input
-              type="date"
-              className="mui-input"
-              value={goalDate}
-              onChange={(e) => setGoalDate(e.target.value)}
-              style={{ width: '150px' }}
-            />
-            <button
-              className="mui-btn mui-btn-primary"
-              onClick={async () => {
-                if (!goalTitle.trim()) return showToast('Enter a goal title');
-                await createGoal(goalTitle.trim(), goalCategory, goalDate, userEmail);
-                setGoalTitle('');
-                showToast('Goal created!');
-                loadData();
-              }}
-            >
-              Add Goal
-            </button>
-          </div>
-
-          {goals.length === 0 ? (
-            <p className="muted-sm">No goals set yet.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {goals.map((g) => (
-                <div key={g.id} style={{ padding: '14px', borderRadius: '12px', border: '1px solid var(--mui-border)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <div>
-                      <strong>{g.title}</strong>
-                      <div className="muted-sm">{g.category} {g.target_date ? `• Target: ${g.target_date}` : ''}</div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <strong style={{ color: '#06b6d4' }}>{g.progress}%</strong>
-                      <button
-                        className="mui-btn-icon"
+            {goals.length === 0 ? (
+              <Card sx={riseSx(3)}>
+                <EmptyState icon="flag" title="No goals yet" description="Add a goal above and track its progress here." />
+              </Card>
+            ) : (
+              <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr', xl: 'repeat(3, 1fr)' } }}>
+                {goals.map((g, gi) => (
+                  <Card key={g.id} sx={{ p: 2.25, ...riseSx(gi + 3), ...hoverLift }}>
+                    <Stack direction="row" alignItems="flex-start" spacing={1.5} sx={{ mb: 1.5 }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{g.title}</Typography>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
+                          <Chip size="small" label={g.category} variant="outlined" />
+                          {g.target_date && (
+                            <Typography variant="caption" color="text.secondary">Target: {g.target_date}</Typography>
+                          )}
+                        </Stack>
+                      </Box>
+                      <Typography sx={{ fontWeight: 800, fontSize: 20, color: 'secondary.main' }}>{g.progress}%</Typography>
+                      <IconButton
+                        aria-label={`Delete goal ${g.title}`}
+                        sx={{ width: 44, height: 44, mt: -0.5 }}
                         onClick={async () => {
                           await deleteGoal(g.id, userEmail);
                           loadData();
                         }}
                       >
-                        <span className="material-symbols-rounded icon-sm">delete</span>
-                      </button>
-                    </div>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={g.progress}
-                    onChange={async (e) => {
-                      const val = Number(e.target.value);
-                      setGoals((prev) => prev.map((item) => (item.id === g.id ? { ...item, progress: val } : item)));
-                      await updateGoalProgress(g.id, val, userEmail);
-                    }}
-                    style={{ width: '100%', accentColor: '#06b6d4' }}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 3: DAILY JOURNAL & AI WEEKLY WIN REPORT */}
-      {tab === 'journal' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-          <div className="mui-card">
-            <h2 style={{ margin: '0 0 10px 0', fontSize: '17px', fontWeight: 700 }}>Daily Check-In & Reflection</h2>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-              {['🚀', '😊', '😐', '😓', '🔥'].map((m) => (
-                <button
-                  key={m}
-                  className={`mui-btn mui-btn-sm ${mood === m ? 'mui-btn-primary' : 'mui-btn-outlined'}`}
-                  onClick={() => setMood(m)}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-            <textarea
-              className="mui-input"
-              placeholder="Today's biggest win..."
-              value={winText}
-              onChange={(e) => setWinText(e.target.value)}
-              rows={3}
-              style={{ width: '100%', marginBottom: '10px' }}
-            />
-            <textarea
-              className="mui-input"
-              placeholder="Any blocker or tomorrow's priority..."
-              value={blockerText}
-              onChange={(e) => setBlockerText(e.target.value)}
-              rows={2}
-              style={{ width: '100%', marginBottom: '12px' }}
-            />
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                className="mui-btn mui-btn-primary"
-                onClick={async () => {
-                  if (!winText.trim()) return showToast('Write at least one win for today!');
-                  await createJournal(mood, winText.trim(), blockerText.trim(), userEmail);
-                  setWinText('');
-                  setBlockerText('');
-                  showToast('Daily reflection saved!');
-                  loadData();
-                }}
-              >
-                Save Check-In
-              </button>
-              <button
-                className="mui-btn mui-btn-outlined"
-                disabled={reportLoading}
-                onClick={async () => {
-                  setReportLoading(true);
-                  try {
-                    const res = await generateWeeklyWinReport(userEmail, getAiCfg());
-                    setWeeklyReport(res.report);
-                  } catch (e: any) {
-                    showToast(e.message);
-                  } finally {
-                    setReportLoading(false);
-                  }
-                }}
-              >
-                {reportLoading ? 'Generating...' : 'AI Weekly Win Report'}
-              </button>
-            </div>
-          </div>
-
-          <div className="mui-card">
-            <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: 700 }}>
-              {weeklyReport ? 'AI Weekly Win Report' : 'Recent Reflections'}
-            </h3>
-            {weeklyReport ? (
-              <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(weeklyReport) }} />
-            ) : journals.length === 0 ? (
-              <p className="muted-sm">No journal entries yet.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {journals.map((j) => (
-                  <div key={j.id} style={{ padding: '10px', borderRadius: '10px', border: '1px solid var(--mui-border)' }}>
-                    <div style={{ fontWeight: 700, marginBottom: '4px' }}>{j.mood} {j.entry_date}</div>
-                    <div style={{ fontSize: '13px' }}><strong>Win:</strong> {j.win_text}</div>
-                    {j.blocker_text && <div className="muted-sm"><strong>Next/Blocker:</strong> {j.blocker_text}</div>}
-                  </div>
+                        <Icon name="delete" />
+                      </IconButton>
+                    </Stack>
+                    <Slider
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={g.progress}
+                      color="secondary"
+                      aria-label={`Progress for ${g.title}`}
+                      onChange={async (_e, v) => {
+                        const val = Number(v);
+                        setGoals((prev) => prev.map((item) => (item.id === g.id ? { ...item, progress: val } : item)));
+                        await updateGoalProgress(g.id, val, userEmail);
+                      }}
+                    />
+                  </Card>
                 ))}
-              </div>
+              </Box>
             )}
-          </div>
-        </div>
-      )}
+          </Stack>
+        )}
 
-      {/* TAB 4: WEB URL AI SUMMARIZER */}
-      {tab === 'url' && (
-        <div className="mui-card">
-          <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 700 }}>Web Article & Documentation AI Summarizer</h2>
-          <p className="muted-sm" style={{ marginBottom: '14px' }}>
-            Paste any blog post, docs page, or news URL to extract an executive summary and save it to Smart Notes.
-          </p>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
-            <input
-              type="url"
-              className="mui-input"
-              placeholder="https://example.com/article"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button
-              className="mui-btn mui-btn-primary"
-              disabled={urlLoading}
-              onClick={async () => {
-                if (!urlInput.trim()) return showToast('Paste a valid URL');
-                setUrlLoading(true);
-                try {
-                  const res = await summarizeWebUrl(urlInput.trim(), userEmail, getAiCfg());
-                  setUrlResult(res);
-                } catch (e: any) {
-                  showToast(e.message);
-                } finally {
-                  setUrlLoading(false);
-                }
-              }}
-            >
-              {urlLoading ? 'Reading URL...' : 'Summarize URL'}
-            </button>
-          </div>
-
-          {urlResult && (
-            <div style={{ padding: '16px', borderRadius: '12px', border: '1px solid var(--mui-border)', background: 'var(--mui-bg-paper)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '10px', flexWrap: 'wrap' }}>
-                <strong>{urlResult.title}</strong>
-                <button
-                  className="mui-btn mui-btn-outlined mui-btn-sm"
-                  onClick={async () => {
-                    await onSaveUrlAsNote(urlResult.title, `${urlResult.summary}\n\nSource: ${urlResult.url}`);
-                    showToast('Saved summary to Smart Notes!');
-                  }}
-                >
-                  Save to Smart Notes
-                </button>
-              </div>
-              <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(urlResult.summary) }} />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 5: AI FLASHCARDS & QUIZ STUDIO */}
-      {tab === 'flashcards' && (
-        <div className="mui-card">
-          <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 700 }}>AI Study Flashcards & Quiz Generator</h2>
-          <p className="muted-sm" style={{ marginBottom: '14px' }}>
-            Pick one of your Smart Notes or paste any study material to generate interactive flip-cards.
-          </p>
-
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
-            {notes.slice(0, 5).map((n) => (
-              <button
-                key={n.id}
-                className="mui-btn mui-btn-outlined mui-btn-sm"
-                onClick={() => {
-                  setFcTitle(n.title);
-                  setFcContent((n.content || '').replace(/<[^>]+>/g, ' '));
-                }}
+        {/* TAB 3: DAILY JOURNAL & WEEKLY REPORT */}
+        {tab === 'journal' && (
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2.5, alignItems: 'start' }}>
+            <SectionCard index={2} icon="edit_note" accent="green" title="Daily check-in" subtitle="How did today go?">
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>Mood</Typography>
+              <ToggleButtonGroup
+                exclusive
+                value={mood}
+                onChange={(_, v) => { if (v) setMood(v); }}
+                aria-label="Mood"
+                sx={{ mb: 2, flexWrap: 'wrap' }}
               >
-                Load Note: {n.title.slice(0, 22)}
-              </button>
-            ))}
-          </div>
-
-          <input
-            type="text"
-            className="mui-input"
-            placeholder="Topic Title"
-            value={fcTitle}
-            onChange={(e) => setFcTitle(e.target.value)}
-            style={{ width: '100%', marginBottom: '8px' }}
-          />
-          <textarea
-            className="mui-input"
-            rows={4}
-            placeholder="Paste study text, lecture notes, or meeting highlights..."
-            value={fcContent}
-            onChange={(e) => setFcContent(e.target.value)}
-            style={{ width: '100%', marginBottom: '12px' }}
-          />
-          <button
-            className="mui-btn mui-btn-primary"
-            disabled={fcLoading}
-            onClick={async () => {
-              if (fcContent.trim().length < 20) return showToast('Paste at least a few sentences');
-              setFcLoading(true);
-              try {
-                const res = await generateFlashcardsApi(fcTitle || 'Study Topic', fcContent, userEmail, getAiCfg());
-                setFlashcards(res.flashcards);
-                setFlippedIdx({});
-              } catch (e: any) {
-                showToast(e.message);
-              } finally {
-                setFcLoading(false);
-              }
-            }}
-          >
-            {fcLoading ? 'Generating Cards...' : 'Generate 6 Flashcards'}
-          </button>
-
-          {flashcards.length > 0 && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginTop: '18px' }}>
-              {flashcards.map((card, i) => {
-                const flipped = !!flippedIdx[i];
-                return (
-                  <div
-                    key={i}
-                    onClick={() => setFlippedIdx((prev) => ({ ...prev, [i]: !prev[i] }))}
-                    style={{
-                      padding: '16px',
-                      borderRadius: '12px',
-                      cursor: 'pointer',
-                      minHeight: '130px',
-                      border: flipped ? '2px solid #10b981' : '1px solid #06b6d4',
-                      background: flipped ? 'rgba(16, 185, 129, 0.08)' : 'rgba(6, 182, 212, 0.06)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between'
+                {['🚀', '😊', '😐', '😓', '🔥'].map((m) => (
+                  <ToggleButton key={m} value={m} aria-label={MOOD_ICONS[m].label} sx={{ width: 48, height: 48 }}>
+                    <Tooltip title={MOOD_ICONS[m].label}>
+                      <Box component="span" sx={{ display: 'flex' }}>
+                        <Icon name={MOOD_ICONS[m].icon} size={22} fill={mood === m} />
+                      </Box>
+                    </Tooltip>
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+              <Stack spacing={1.75}>
+                <TextField
+                  label="Today's biggest win"
+                  value={winText}
+                  onChange={(e) => setWinText(e.target.value)}
+                  multiline
+                  minRows={3}
+                  fullWidth
+                />
+                <TextField
+                  label="Blocker or tomorrow's priority"
+                  value={blockerText}
+                  onChange={(e) => setBlockerText(e.target.value)}
+                  multiline
+                  minRows={2}
+                  fullWidth
+                />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<Icon name="check" />}
+                    onClick={async () => {
+                      if (!winText.trim()) return showToast('Write at least one win for today!');
+                      await createJournal(mood, winText.trim(), blockerText.trim(), userEmail);
+                      setWinText('');
+                      setBlockerText('');
+                      showToast('Daily reflection saved!');
+                      loadData();
                     }}
                   >
-                    <span className="cmd-badge" style={{ alignSelf: 'flex-start' }}>
-                      {flipped ? `Answer #${i + 1}` : `Question #${i + 1}`}
-                    </span>
-                    <div style={{ fontSize: '14px', fontWeight: flipped ? 500 : 700, margin: '10px 0' }}>
-                      {flipped ? card.a : card.q}
-                    </div>
-                    <span className="muted-sm" style={{ fontSize: '11px' }}>Click card to flip</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+                    Save check-in
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    disabled={reportLoading}
+                    startIcon={reportLoading ? <CircularProgress size={16} color="inherit" /> : <Icon name="auto_awesome" />}
+                    onClick={async () => {
+                      setReportLoading(true);
+                      try {
+                        const res = await generateWeeklyWinReport(userEmail, getAiCfg());
+                        setWeeklyReport(res.report);
+                      } catch (e: any) {
+                        showToast(e.message);
+                      } finally {
+                        setReportLoading(false);
+                      }
+                    }}
+                  >
+                    {reportLoading ? 'Writing report...' : 'Weekly wins report'}
+                  </Button>
+                </Stack>
+              </Stack>
+            </SectionCard>
 
-      {/* TAB 6: AI MIND-MAP & MEETING FOLLOW-UP */}
-      {tab === 'mindmap' && (
-        <div className="mui-card">
-          <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 700 }}>
-            AI Visual Mind-Map & Meeting Follow-Up Studio
-          </h2>
-          <p className="muted-sm" style={{ marginBottom: '12px' }}>
-            Convert any Note or Meeting transcript into a structured visual Mind Map or an executive follow-up email with action items.
-          </p>
+            <SectionCard
+              index={3}
+              icon={weeklyReport ? 'auto_awesome' : 'history'}
+              accent="violet"
+              title={weeklyReport ? 'Weekly wins report' : 'Recent reflections'}
+            >
+              {weeklyReport ? (
+                <Box className="markdown-body" sx={markdownSx} dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(weeklyReport) }} />
+              ) : journals.length === 0 ? (
+                <EmptyState icon="menu_book" title="No entries yet" description="Your daily check-ins will appear here." />
+              ) : (
+                <Stack spacing={1.25}>
+                  {journals.map((j, ji) => {
+                    const mi = MOOD_ICONS[j.mood];
+                    return (
+                      <Box key={j.id} sx={{ p: 1.75, borderRadius: 3, border: 1, borderColor: 'divider', ...riseSx(ji + 4) }}>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
+                          {mi ? <Icon name={mi.icon} size={18} sx={{ color: 'secondary.main' }} /> : null}
+                          <Typography variant="subtitle2">{j.entry_date}</Typography>
+                          {mi && <Typography variant="caption" color="text.secondary">{mi.label}</Typography>}
+                        </Stack>
+                        <Typography variant="body2"><strong>Win:</strong> {j.win_text}</Typography>
+                        {j.blocker_text && (
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}><strong>Next:</strong> {j.blocker_text}</Typography>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              )}
+            </SectionCard>
+          </Box>
+        )}
 
-          {notes.length > 0 && (
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
-              <span className="muted-sm" style={{ alignSelf: 'center' }}>Load Note:</span>
-              {notes.slice(0, 4).map((n) => (
-                <button
-                  key={n.id}
-                  className="mui-btn mui-btn-outlined mui-btn-sm"
-                  onClick={() => {
-                    setMmTitle(n.title || 'Note');
-                    setMmContent(n.content || '');
+        {/* TAB 4: LINK SUMMARIZER */}
+        {tab === 'url' && (
+          <Stack spacing={2.5}>
+            <SectionCard index={2} icon="link" accent="cyan" title="Summarize a link" subtitle="Paste any article or page link to get a short summary you can save as a note.">
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                <TextField
+                  type="url"
+                  label="Link"
+                  placeholder="https://example.com/article"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  fullWidth
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  disabled={urlLoading}
+                  startIcon={urlLoading ? <CircularProgress size={16} color="inherit" /> : <Icon name="summarize" />}
+                  sx={{ minHeight: 56, flex: 'none' }}
+                  onClick={async () => {
+                    if (!urlInput.trim()) return showToast('Paste a valid URL');
+                    setUrlLoading(true);
+                    try {
+                      const res = await summarizeWebUrl(urlInput.trim(), userEmail, getAiCfg());
+                      setUrlResult(res);
+                    } catch (e: any) {
+                      showToast(e.message);
+                    } finally {
+                      setUrlLoading(false);
+                    }
                   }}
                 >
-                  {(n.title || 'Untitled').slice(0, 22)}
-                </button>
-              ))}
-            </div>
-          )}
+                  {urlLoading ? 'Reading...' : 'Summarize'}
+                </Button>
+              </Stack>
+            </SectionCard>
 
-          <input
-            className="mui-input"
-            placeholder="Topic or Meeting Title..."
-            value={mmTitle}
-            onChange={(e) => setMmTitle(e.target.value)}
-            style={{ marginBottom: '10px' }}
-          />
-          <textarea
-            className="mui-input"
-            rows={4}
-            placeholder="Paste notes, brainstorm ideas, or meeting transcript..."
-            value={mmContent}
-            onChange={(e) => setMmContent(e.target.value)}
-            style={{ marginBottom: '12px' }}
-          />
-
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
-            <button
-              className="mui-btn mui-btn-primary"
-              disabled={mmLoading}
-              onClick={async () => {
-                if (!mmContent.trim()) return showToast('Enter content first');
-                setMmLoading(true);
-                try {
-                  const res = await generateMindMap({ title: mmTitle || 'Mind Map', content: mmContent, user_email: userEmail });
-                  if (res.mindmap) setMindMap(res.mindmap);
-                  else showToast(res.error || 'Failed');
-                } finally {
-                  setMmLoading(false);
+            {urlResult && (
+              <SectionCard
+                index={3}
+                icon="article"
+                accent="green"
+                title={urlResult.title}
+                action={
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<Icon name="note_add" size={18} />}
+                    sx={{ minHeight: 40, flex: 'none' }}
+                    onClick={async () => {
+                      await onSaveUrlAsNote(urlResult.title, `${urlResult.summary}\n\nSource: ${urlResult.url}`);
+                      showToast('Summary saved to notes!');
+                    }}
+                  >
+                    Save to notes
+                  </Button>
                 }
-              }}
-            >
-              <span className="material-symbols-rounded icon-sm">account_tree</span>
-              <span>{mmLoading ? 'Generating...' : 'Generate Visual Mind Map'}</span>
-            </button>
+              >
+                <Box className="markdown-body" sx={markdownSx} dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(urlResult.summary) }} />
+              </SectionCard>
+            )}
+          </Stack>
+        )}
 
-            <button
-              className="mui-btn mui-btn-outlined"
-              disabled={mmLoading}
-              onClick={async () => {
-                if (!mmContent.trim()) return showToast('Enter meeting notes first');
-                setMmLoading(true);
-                try {
-                  const res = await generateMeetingFollowup({ title: mmTitle || 'Team Sync', transcript: mmContent, user_email: userEmail });
-                  setFollowupResult(res);
-                } finally {
-                  setMmLoading(false);
-                }
-              }}
-            >
-              <span className="material-symbols-rounded icon-sm">mail</span>
-              <span>Draft Follow-Up Email + Actions</span>
-            </button>
-          </div>
-
-          {mindMap && (
-            <div style={{ padding: '16px', borderRadius: '12px', border: '1px solid var(--mui-border)', background: 'var(--mui-bg-paper)', marginBottom: '16px' }}>
-              <div style={{ textAlign: 'center', marginBottom: '14px' }}>
-                <span style={{ display: 'inline-block', padding: '8px 18px', borderRadius: '999px', background: 'linear-gradient(135deg, #0891b2, #06b6d4)', color: '#fff', fontWeight: 700, fontSize: '14px' }}>
-                  {mindMap.root}
-                </span>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
-                {mindMap.branches.map((b, idx) => (
-                  <div key={idx} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #0891b2', background: 'rgba(8, 145, 178, 0.06)' }}>
-                    <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#22d3ee', marginBottom: '6px' }}>
-                      {b.title}
-                    </div>
-                    <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12.5px' }}>
-                      {b.nodes.map((node, ni) => (
-                        <li key={ni} style={{ marginBottom: '3px' }}>{node}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {followupResult && (
-            <div style={{ padding: '16px', borderRadius: '12px', border: '1px solid var(--mui-border)', background: 'var(--mui-bg-paper)' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '8px' }}>
-                Subject: {followupResult.subject}
-              </div>
-              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '13px', marginBottom: '12px', color: 'var(--mui-text-secondary)' }}>
-                {followupResult.email_body}
-              </pre>
-              {followupResult.action_items && followupResult.action_items.length > 0 && (
-                <div>
-                  <strong style={{ fontSize: '13px' }}>Extracted Action Items:</strong>
-                  <ul style={{ marginTop: '6px', paddingLeft: '18px', fontSize: '13px' }}>
-                    {followupResult.action_items.map((a, idx) => (
-                      <li key={idx}>{a}</li>
-                    ))}
-                  </ul>
-                </div>
+        {/* TAB 5: FLASHCARDS */}
+        {tab === 'flashcards' && (
+          <Stack spacing={2.5}>
+            <SectionCard index={2} icon="style" accent="violet" title="Flashcards" subtitle="Pick a note or paste any text to create flip cards.">
+              {notes.length > 0 && (
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
+                  {notes.slice(0, 5).map((n) => (
+                    <Chip
+                      key={n.id}
+                      icon={<Icon name="description" size={16} />}
+                      label={n.title.slice(0, 22)}
+                      variant="outlined"
+                      clickable
+                      onClick={() => {
+                        setFcTitle(n.title);
+                        setFcContent((n.content || '').replace(/<[^>]+>/g, ' '));
+                      }}
+                    />
+                  ))}
+                </Stack>
               )}
-            </div>
-          )}
-        </div>
-      )}
+              <Stack spacing={1.75}>
+                <TextField label="Topic" value={fcTitle} onChange={(e) => setFcTitle(e.target.value)} fullWidth />
+                <TextField
+                  label="Text to learn from"
+                  placeholder="Paste notes, an article or meeting highlights..."
+                  value={fcContent}
+                  onChange={(e) => setFcContent(e.target.value)}
+                  multiline
+                  minRows={4}
+                  fullWidth
+                />
+                <Box>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    disabled={fcLoading}
+                    startIcon={fcLoading ? <CircularProgress size={16} color="inherit" /> : <Icon name="auto_awesome" />}
+                    onClick={async () => {
+                      if (fcContent.trim().length < 20) return showToast('Paste at least a few sentences');
+                      setFcLoading(true);
+                      try {
+                        const res = await generateFlashcardsApi(fcTitle || 'Study Topic', fcContent, userEmail, getAiCfg());
+                        setFlashcards(res.flashcards);
+                        setFlippedIdx({});
+                      } catch (e: any) {
+                        showToast(e.message);
+                      } finally {
+                        setFcLoading(false);
+                      }
+                    }}
+                  >
+                    {fcLoading ? 'Creating cards...' : 'Create 6 flashcards'}
+                  </Button>
+                </Box>
+              </Stack>
+            </SectionCard>
+
+            {flashcards.length > 0 && (
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(3, 1fr)' }, gap: 2 }}>
+                {flashcards.map((card, i) => {
+                  const flipped = !!flippedIdx[i];
+                  return (
+                    <Card
+                      key={i}
+                      component="button"
+                      type="button"
+                      aria-pressed={flipped}
+                      onClick={() => setFlippedIdx((prev) => ({ ...prev, [i]: !prev[i] }))}
+                      sx={{
+                        p: 2.25,
+                        minHeight: 160,
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        font: 'inherit',
+                        color: 'text.primary',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        borderColor: flipped ? 'success.main' : 'divider',
+                        bgcolor: (t) => (flipped ? alpha(t.palette.success.main, 0.06) : t.palette.background.paper),
+                        ...riseSx(i + 3),
+                        ...hoverLift
+                      }}
+                    >
+                      <Chip
+                        size="small"
+                        label={flipped ? `Answer ${i + 1}` : `Question ${i + 1}`}
+                        color={flipped ? 'success' : 'secondary'}
+                        variant="outlined"
+                      />
+                      <Typography sx={{ fontSize: 15, fontWeight: flipped ? 500 : 700, my: 1.5 }}>
+                        {flipped ? card.a : card.q}
+                      </Typography>
+                      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ color: 'text.secondary' }}>
+                        <Icon name="flip" size={16} />
+                        <Typography variant="caption">Tap to flip</Typography>
+                      </Stack>
+                    </Card>
+                  );
+                })}
+              </Box>
+            )}
+          </Stack>
+        )}
+
+        {/* TAB 6: MIND MAP & FOLLOW-UP */}
+        {tab === 'mindmap' && (
+          <Stack spacing={2.5}>
+            <SectionCard index={2} icon="account_tree" accent="cyan" title="Mind map & follow-up" subtitle="Turn notes into a mind map, or draft a follow-up email with action items.">
+              {notes.length > 0 && (
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ mb: 2 }}>
+                  <Typography variant="caption" color="text.secondary">Load a note:</Typography>
+                  {notes.slice(0, 4).map((n) => (
+                    <Chip
+                      key={n.id}
+                      icon={<Icon name="description" size={16} />}
+                      label={(n.title || 'Untitled').slice(0, 22)}
+                      variant="outlined"
+                      clickable
+                      onClick={() => {
+                        setMmTitle(n.title || 'Note');
+                        setMmContent(n.content || '');
+                      }}
+                    />
+                  ))}
+                </Stack>
+              )}
+              <Stack spacing={1.75}>
+                <TextField label="Topic or meeting title" value={mmTitle} onChange={(e) => setMmTitle(e.target.value)} fullWidth />
+                <TextField
+                  label="Notes or transcript"
+                  placeholder="Paste notes, ideas or a meeting transcript..."
+                  value={mmContent}
+                  onChange={(e) => setMmContent(e.target.value)}
+                  multiline
+                  minRows={4}
+                  fullWidth
+                />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    disabled={mmLoading}
+                    startIcon={mmLoading ? <CircularProgress size={16} color="inherit" /> : <Icon name="account_tree" />}
+                    onClick={async () => {
+                      if (!mmContent.trim()) return showToast('Enter content first');
+                      setMmLoading(true);
+                      try {
+                        const res = await generateMindMap({ title: mmTitle || 'Mind Map', content: mmContent, user_email: userEmail });
+                        if (res.mindmap) setMindMap(res.mindmap);
+                        else showToast(res.error || 'Failed');
+                      } finally {
+                        setMmLoading(false);
+                      }
+                    }}
+                  >
+                    {mmLoading ? 'Working...' : 'Create mind map'}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    disabled={mmLoading}
+                    startIcon={<Icon name="mail" />}
+                    onClick={async () => {
+                      if (!mmContent.trim()) return showToast('Enter meeting notes first');
+                      setMmLoading(true);
+                      try {
+                        const res = await generateMeetingFollowup({ title: mmTitle || 'Team Sync', transcript: mmContent, user_email: userEmail });
+                        setFollowupResult(res);
+                      } finally {
+                        setMmLoading(false);
+                      }
+                    }}
+                  >
+                    Draft follow-up email
+                  </Button>
+                </Stack>
+              </Stack>
+            </SectionCard>
+
+            {mindMap && (
+              <Card sx={{ p: { xs: 2, sm: 3 }, ...riseSx(3) }}>
+                <Box sx={{ textAlign: 'center', mb: 2.5 }}>
+                  <Box
+                    component="span"
+                    sx={{ display: 'inline-block', px: 2.5, py: 1, borderRadius: 999, bgcolor: 'primary.main', color: 'primary.contrastText', fontWeight: 700, fontSize: 15 }}
+                  >
+                    {mindMap.root}
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+                  {mindMap.branches.map((b, idx) => (
+                    <Box
+                      key={idx}
+                      sx={{
+                        p: 1.75,
+                        borderRadius: 3,
+                        border: 1,
+                        borderColor: (t) => alpha(t.palette.secondary.main, 0.4),
+                        bgcolor: (t) => alpha(t.palette.secondary.main, 0.06),
+                        ...riseSx(idx + 4)
+                      }}
+                    >
+                      <Typography variant="subtitle2" sx={{ color: 'secondary.main', mb: 0.75 }}>{b.title}</Typography>
+                      <Box component="ul" sx={{ m: 0, pl: 2.25, fontSize: 13.5 }}>
+                        {b.nodes.map((node, ni) => (
+                          <Box component="li" key={ni} sx={{ mb: 0.4 }}>{node}</Box>
+                        ))}
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              </Card>
+            )}
+
+            {followupResult && (
+              <SectionCard index={4} icon="mail" accent="indigo" title={`Subject: ${followupResult.subject ?? ''}`}>
+                <Typography component="pre" variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', m: 0, mb: 2 }}>
+                  {followupResult.email_body}
+                </Typography>
+                {followupResult.action_items && followupResult.action_items.length > 0 && (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Action items</Typography>
+                    <Stack spacing={0.75}>
+                      {followupResult.action_items.map((a, idx) => (
+                        <Stack key={idx} direction="row" spacing={1} alignItems="flex-start">
+                          <Icon name="check_circle" size={18} sx={{ color: 'success.main', mt: '2px' }} />
+                          <Typography variant="body2">{a}</Typography>
+                        </Stack>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+              </SectionCard>
+            )}
+          </Stack>
+        )}
+      </PageContainer>
     </section>
   );
 };

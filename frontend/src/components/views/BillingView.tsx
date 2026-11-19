@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Box, Button, Card, Chip, LinearProgress, Stack, Table, TableBody, TableCell, TableHead, TableRow, ToggleButton, ToggleButtonGroup, Typography
+} from '@mui/material';
+import { alpha, keyframes } from '@mui/material/styles';
+import {
   fetchBillingPlans,
   fetchBillingStatus,
   upgradeBillingPlan,
@@ -7,12 +11,18 @@ import {
   type SaasPlan,
   type SubscriptionStatus
 } from '../../services/enterprise';
+import { Icon, PageContainer, PageHeader, SectionCard, EmptyState, riseSx } from '../ui';
 
 interface BillingViewProps {
   userEmail: string;
   activeOrgId: string;
   showToast: (msg: string) => void;
 }
+
+const grow = keyframes`
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+`;
 
 export const BillingView: React.FC<BillingViewProps> = ({ userEmail, activeOrgId, showToast }) => {
   const [plans, setPlans] = useState<SaasPlan[]>([]);
@@ -54,127 +64,178 @@ export const BillingView: React.FC<BillingViewProps> = ({ userEmail, activeOrgId
 
   const creditPct = sub ? Math.min(100, Math.round((sub.ai_credits_used / Math.max(sub.ai_credits_limit, 1)) * 100)) : 0;
 
+  const cycleToggle = (
+    <ToggleButtonGroup
+      exclusive
+      size="small"
+      value={cycle}
+      onChange={(_, v) => { if (v) setCycle(v); }}
+      aria-label="Billing cycle"
+      sx={{ bgcolor: 'background.paper', '& .MuiToggleButton-root': { minHeight: 44, px: 2, textTransform: 'none', fontWeight: 600 } }}
+    >
+      <ToggleButton value="monthly">Monthly</ToggleButton>
+      <ToggleButton value="yearly">Yearly (save 20%)</ToggleButton>
+    </ToggleButtonGroup>
+  );
+
   return (
-    <section className="workspace-view active" id="view-billing">
-      <div className="mui-card" style={{ marginBottom: '20px' }}>
-        <div className="card-header-flex">
-          <div>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Subscription & AI Usage Metering</h2>
-            <p className="muted-sm" style={{ marginTop: '4px' }}>
-              Active Plan: <strong style={{ color: '#06b6d4' }}>{(sub?.plan_id || 'starter').toUpperCase()}</strong> • Cycle: {sub?.billing_cycle || 'monthly'}
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              className={`mui-btn mui-btn-sm ${cycle === 'monthly' ? 'mui-btn-primary' : 'mui-btn-outlined'}`}
-              onClick={() => setCycle('monthly')}
-            >
-              Monthly
-            </button>
-            <button
-              className={`mui-btn mui-btn-sm ${cycle === 'yearly' ? 'mui-btn-primary' : 'mui-btn-outlined'}`}
-              onClick={() => setCycle('yearly')}
-            >
-              Yearly (Save 20%)
-            </button>
-          </div>
-        </div>
+    <Box component="section" className="workspace-view active" id="view-billing">
+      <PageContainer>
+        <PageHeader
+          overline="Plan & Billing"
+          title="Plan & Billing"
+          description={
+            <>
+              Current plan: <Box component="strong" sx={{ color: 'secondary.main' }}>{(sub?.plan_id || 'starter').toUpperCase()}</Box> · Billed {sub?.billing_cycle || 'monthly'}
+            </>
+          }
+          actions={cycleToggle}
+        />
 
         {sub && (
-          <div style={{ marginTop: '14px', padding: '14px', borderRadius: '10px', border: '1px solid var(--mui-border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '6px' }}>
-              <span>Monthly AI Credits Meter</span>
-              <strong>{sub.ai_credits_used.toLocaleString()} / {sub.ai_credits_limit.toLocaleString()} credits ({creditPct}%)</strong>
-            </div>
-            <div style={{ height: '10px', borderRadius: '999px', background: 'var(--mui-border)', overflow: 'hidden' }}>
-              <div
-                style={{
-                  width: `${creditPct}%`,
-                  height: '100%',
-                  background: creditPct > 85 ? '#ef4444' : '#06b6d4'
-                }}
-              />
-            </div>
-            <div className="muted-sm" style={{ marginTop: '8px' }}>
-              Seat Quota: {sub.seats_limit} seats • Knowledge Storage Limit: {sub.storage_mb_limit} MB
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '20px' }}>
-        {plans.map((p) => {
-          const isCurrent = sub?.plan_id === p.id;
-          const price = cycle === 'yearly' ? p.price_yearly : p.price_monthly;
-          return (
-            <div
-              key={p.id}
-              className="mui-card"
-              style={{
-                border: isCurrent ? '2px solid #06b6d4' : '1px solid var(--mui-border)',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between'
+          <SectionCard index={1} icon="bolt" accent="cyan" title="AI credits this month" subtitle={`${sub.seats_limit} seats · ${sub.storage_mb_limit} MB storage included`} sx={{ mb: 3 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mb: 1 }} flexWrap="wrap" useFlexGap spacing={1}>
+              <Typography variant="body2" color="text.secondary">
+                <Box component="strong" sx={{ color: 'text.primary', fontSize: 18 }}>{sub.ai_credits_used.toLocaleString()}</Box> / {sub.ai_credits_limit.toLocaleString()} credits
+              </Typography>
+              <Chip size="small" color={creditPct > 85 ? 'error' : 'default'} label={`${creditPct}% used`} />
+            </Stack>
+            <LinearProgress
+              variant="determinate"
+              value={creditPct}
+              color={creditPct > 85 ? 'error' : 'secondary'}
+              aria-label={`AI credits used: ${creditPct}%`}
+              sx={{
+                height: 12, borderRadius: 999,
+                '& .MuiLinearProgress-bar': { borderRadius: 999 },
+                transformOrigin: 'left',
+                animation: `${grow} 1s cubic-bezier(.2,.7,.2,1) .2s both`,
+                '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
               }}
-            >
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>{p.name}</h3>
-                  {isCurrent && <span className="cmd-badge">CURRENT</span>}
-                </div>
-                <div style={{ fontSize: '26px', fontWeight: 800, margin: '10px 0' }}>
-                  ₹{price.toLocaleString('en-IN')}<span className="muted-sm" style={{ fontSize: '12px' }}>/{cycle === 'yearly' ? 'yr' : 'mo'}</span>
-                </div>
-                <ul style={{ paddingLeft: '18px', margin: '0 0 14px 0', fontSize: '13px', lineHeight: 1.6 }}>
-                  {p.features.map((f) => (
-                    <li key={f}>{f}</li>
-                  ))}
-                </ul>
-              </div>
-              <button
-                className={`mui-btn ${isCurrent ? 'mui-btn-outlined' : 'mui-btn-primary'}`}
-                disabled={isCurrent}
-                onClick={() => handleUpgrade(p.id)}
+            />
+          </SectionCard>
+        )}
+
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: `repeat(${Math.min(Math.max(plans.length, 1), 4)}, 1fr)` }, gap: 2, mb: 3, alignItems: 'stretch' }}>
+          {plans.map((p, i) => {
+            const isCurrent = sub?.plan_id === p.id;
+            const price = cycle === 'yearly' ? p.price_yearly : p.price_monthly;
+            return (
+              <Card
+                key={p.id}
+                sx={(t) => ({
+                  ...(riseSx(i + 2) as object),
+                  p: 3,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  transition: 'transform .25s ease, box-shadow .25s ease',
+                  '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 },
+                  '@media (prefers-reduced-motion: reduce)': { animation: 'none', transition: 'none', '&:hover': { transform: 'none' } },
+                  ...(isCurrent
+                    ? {
+                        bgcolor: t.palette.mode === 'dark' ? '#1e293b' : '#374151',
+                        color: '#f8fafc',
+                        borderColor: alpha('#22d3ee', 0.5),
+                      }
+                    : {}),
+                })}
               >
-                {isCurrent ? 'Active Plan' : `Switch to ${p.name}`}
-              </button>
-            </div>
-          );
-        })}
-      </div>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="h6" component="h3" sx={{ color: 'inherit' }}>{p.name}</Typography>
+                  {isCurrent && <Chip size="small" label="Current" sx={{ bgcolor: '#22d3ee', color: '#0f172a', fontWeight: 700 }} />}
+                </Stack>
+                <Box>
+                  <Typography component="span" sx={{ fontSize: 34, fontWeight: 800, letterSpacing: '-0.03em', color: 'inherit' }}>
+                    ₹{price.toLocaleString('en-IN')}
+                  </Typography>
+                  <Typography component="span" variant="body2" sx={{ opacity: 0.7, color: 'inherit' }}>/{cycle === 'yearly' ? 'yr' : 'mo'}</Typography>
+                </Box>
+                <Stack component="ul" spacing={1} sx={{ listStyle: 'none', p: 0, m: 0, flex: 1 }}>
+                  {p.features.map((f) => (
+                    <Stack component="li" key={f} direction="row" spacing={1} alignItems="flex-start">
+                      <Icon name="check_circle" size={18} fill color={isCurrent ? '#22d3ee' : undefined} sx={{ color: isCurrent ? undefined : 'secondary.main', mt: '2px' }} />
+                      <Typography variant="body2" sx={{ color: 'inherit', opacity: isCurrent ? 0.9 : 1 }}>{f}</Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+                <Button
+                  variant={isCurrent ? 'outlined' : 'contained'}
+                  color="primary"
+                  disabled={isCurrent}
+                  onClick={() => handleUpgrade(p.id)}
+                  sx={{
+                    minHeight: 44,
+                    ...(isCurrent ? { '&.Mui-disabled': { color: '#f8fafc', borderColor: alpha('#f8fafc', 0.3) } } : {}),
+                  }}
+                >
+                  {isCurrent ? 'Your current plan' : `Switch to ${p.name}`}
+                </Button>
+              </Card>
+            );
+          })}
+        </Box>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
-        <div className="mui-card">
-          <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 700 }}>Metered Usage Breakdown</h3>
-          {usage.length === 0 ? (
-            <p className="muted-sm">No usage logged yet.</p>
-          ) : (
-            usage.map((u) => (
-              <div key={u.feature} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--mui-border)', fontSize: '13px' }}>
-                <span>{u.feature}</span>
-                <strong>{u.credits} credits ({u.calls} calls)</strong>
-              </div>
-            ))
-          )}
-        </div>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, 1fr)' }, gap: 2 }}>
+          <SectionCard index={6} icon="data_usage" accent="violet" title="Usage by feature">
+            {usage.length === 0 ? (
+              <EmptyState icon="hourglass_empty" title="No usage yet" />
+            ) : (
+              <Box sx={{ overflowX: 'auto', border: 1, borderColor: 'divider', borderRadius: 3 }}>
+                <Table size="small" sx={{ minWidth: 360 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Feature</TableCell>
+                      <TableCell align="right">Requests</TableCell>
+                      <TableCell align="right">Credits</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {usage.map((u) => (
+                      <TableRow key={u.feature} hover sx={{ '&:last-child td': { borderBottom: 0 } }}>
+                        <TableCell sx={{ fontWeight: 600 }}>{u.feature}</TableCell>
+                        <TableCell align="right">{u.calls}</TableCell>
+                        <TableCell align="right">{u.credits}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
+          </SectionCard>
 
-        <div className="mui-card">
-          <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 700 }}>Billing & Invoice History</h3>
-          {invoices.length === 0 ? (
-            <p className="muted-sm">No paid invoices yet.</p>
-          ) : (
-            invoices.map((inv) => (
-              <div key={inv.invoice_id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--mui-border)', fontSize: '13px' }}>
-                <div>
-                  <strong>{inv.invoice_id}</strong>
-                  <div className="muted-sm">{new Date(inv.date).toLocaleDateString()} • {inv.cycle}</div>
-                </div>
-                <span className="cmd-badge">₹{Number(inv.amount_usd || 0).toLocaleString('en-IN')} • {inv.status.toUpperCase()}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </section>
+          <SectionCard index={7} icon="receipt_long" accent="green" title="Invoices">
+            {invoices.length === 0 ? (
+              <EmptyState icon="receipt" title="No invoices yet" />
+            ) : (
+              <Box sx={{ overflowX: 'auto', border: 1, borderColor: 'divider', borderRadius: 3 }}>
+                <Table size="small" sx={{ minWidth: 460 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Invoice</TableCell>
+                      <TableCell>Date</TableCell>
+                      <TableCell align="right">Amount</TableCell>
+                      <TableCell align="right">Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {invoices.map((inv) => (
+                      <TableRow key={inv.invoice_id} hover sx={{ '&:last-child td': { borderBottom: 0 } }}>
+                        <TableCell sx={{ fontWeight: 600, fontFamily: 'monospace', fontSize: 12.5 }}>{inv.invoice_id}</TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>{new Date(inv.date).toLocaleDateString()} · {inv.cycle}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>₹{Number(inv.amount_usd || 0).toLocaleString('en-IN')}</TableCell>
+                        <TableCell align="right">
+                          <Chip size="small" variant="outlined" color={inv.status.toLowerCase() === 'paid' ? 'success' : 'default'} label={inv.status.toUpperCase()} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
+          </SectionCard>
+        </Box>
+      </PageContainer>
+    </Box>
   );
 };

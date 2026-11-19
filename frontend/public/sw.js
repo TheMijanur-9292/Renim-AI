@@ -1,5 +1,5 @@
 // Renim AI — Progressive Web App Service Worker (v2.1)
-const CACHE_NAME = 'renim-ai-cache-v2.1';
+const CACHE_NAME = 'renim-ai-cache-v3';
 const STATIC_ASSETS = [
   '/',
   '/app',
